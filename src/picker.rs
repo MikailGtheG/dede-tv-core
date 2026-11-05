@@ -21,27 +21,49 @@ impl ChannelPicker {
         let selected = active
             .and_then(|id| channels.iter().position(|c| c == id))
             .unwrap_or(0);
-        Self { remote: RemoteController::default(), channels, selected }
+        Self {
+            remote: RemoteController::default(),
+            channels,
+            selected,
+        }
     }
-    pub fn channels(&self) -> &[String] { &self.channels }
-    pub fn selected(&self) -> Option<&str> { self.channels.get(self.selected).map(String::as_str) }
-    pub fn screen(&self) -> crate::remote::Screen { self.remote.screen() }
+    pub fn channels(&self) -> &[String] {
+        &self.channels
+    }
+    pub fn selected(&self) -> Option<&str> {
+        self.channels.get(self.selected).map(String::as_str)
+    }
+    pub fn screen(&self) -> crate::remote::Screen {
+        self.remote.screen()
+    }
     pub fn handle(&mut self, key: RemoteKey) -> PickerEvent {
         match self.remote.handle(key) {
-            Action::ShowChannels => PickerEvent::Show { selected: self.selected },
+            Action::ShowChannels => PickerEvent::Show {
+                selected: self.selected,
+            },
             Action::HideChannels => PickerEvent::Hide,
             Action::MoveSelection(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
-                if delta < 0 { self.selected = (self.selected + len - 1) % len; }
-                else { self.selected = (self.selected + 1) % len; }
-                PickerEvent::SelectionChanged { selected: self.selected }
+                if delta < 0 {
+                    self.selected = (self.selected + len - 1) % len;
+                } else {
+                    self.selected = (self.selected + 1) % len;
+                }
+                PickerEvent::SelectionChanged {
+                    selected: self.selected,
+                }
             }
-            Action::TuneSelected => self.selected()
-                .map(|id| PickerEvent::Tune(id.to_owned())).unwrap_or(PickerEvent::Hide),
+            Action::TuneSelected => self
+                .selected()
+                .map(|id| PickerEvent::Tune(id.to_owned()))
+                .unwrap_or(PickerEvent::Hide),
             Action::StepChannel(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
-                if delta < 0 { self.selected = (self.selected + len - 1) % len; }
-                else { self.selected = (self.selected + 1) % len; }
+                if delta < 0 {
+                    self.selected = (self.selected + len - 1) % len;
+                } else {
+                    self.selected = (self.selected + 1) % len;
+                }
                 PickerEvent::Tune(self.channels[self.selected].clone())
             }
             _ => PickerEvent::None,
@@ -50,8 +72,10 @@ impl ChannelPicker {
     /// Refresh channel list after an administrator changes it. Empty lists are safe.
     pub fn replace_channels(&mut self, channels: Vec<String>) {
         let current = self.selected().map(str::to_owned);
-        self.selected = current.as_deref()
-            .and_then(|id| channels.iter().position(|c| c == id)).unwrap_or(0);
+        self.selected = current
+            .as_deref()
+            .and_then(|id| channels.iter().position(|c| c == id))
+            .unwrap_or(0);
         self.channels = channels;
     }
 }
@@ -65,21 +89,40 @@ mod tests {
     fn ok_opens_picker_and_tunes_selected() {
         let mut p = picker();
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
-        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
-        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Tune("Dede Film".into()));
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
+        assert_eq!(
+            p.handle(RemoteKey::Ok),
+            PickerEvent::Tune("Dede Film".into())
+        );
         assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
     }
     #[test]
     fn channel_buttons_wrap_without_opening_any_ui() {
         let mut p = picker();
-        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::Tune("Dede Film".into()));
-        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::Tune("TRT 1".into()));
+        assert_eq!(
+            p.handle(RemoteKey::ChannelDown),
+            PickerEvent::Tune("Dede Film".into())
+        );
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("TRT 1".into())
+        );
         assert_eq!(p.handle(RemoteKey::Menu), PickerEvent::None);
     }
     #[test]
     fn empty_list_never_panics_or_tunes() {
         let mut p = ChannelPicker::new(vec![], None);
-        for key in [RemoteKey::ChannelUp, RemoteKey::ChannelDown, RemoteKey::Ok, RemoteKey::Up, RemoteKey::Down, RemoteKey::Ok] {
+        for key in [
+            RemoteKey::ChannelUp,
+            RemoteKey::ChannelDown,
+            RemoteKey::Ok,
+            RemoteKey::Up,
+            RemoteKey::Down,
+            RemoteKey::Ok,
+        ] {
             assert!(!matches!(p.handle(key), PickerEvent::Tune(_)));
         }
     }
