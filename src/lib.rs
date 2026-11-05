@@ -185,7 +185,7 @@ mod tests {
         drop(s);
         let s = VirtualChannels::open(&db).unwrap();
         assert_eq!(s.last_channel().unwrap().as_deref(), Some("TRT 1"));
-        assert!(matches!(s.set_last_channel("bad\\nname"), Err(ScheduleError::InvalidChannel)));
+        assert!(matches!(s.set_last_channel("bad\nname"), Err(ScheduleError::InvalidChannel)));
     }
 
     #[test]
