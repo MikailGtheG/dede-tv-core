@@ -65,8 +65,10 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
                     if response.get("error").is_some() {
                         return Err(invalid("Kodi rejected Player.Open"));
                     }
-                    if response.get("result").is_none() {
-                        return Err(invalid("Kodi reply has no result"));
+                    // Player.Open must explicitly acknowledge acceptance.
+                    // A null/false/unexpected result is not playback success.
+                    if response.get("result") != Some(&Value::String("OK".into())) {
+                        return Err(invalid("Kodi did not acknowledge Player.Open"));
                     }
                     return Ok(response);
                 }
