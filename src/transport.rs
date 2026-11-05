@@ -209,8 +209,10 @@ mod tests {
             client.write_all(br#"{"jsonrpc":"2.0","id":7,"error":{"code":-32602,"message":"Invalid params"}}"#).unwrap();
         });
         let request = serde_json::json!({"jsonrpc":"2.0","method":"Player.Open","id":7,"params":{"item":{"channelid":1}}});
-        assert_eq!(send_to_loopback(port, &request).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            send_to_loopback(port, &request).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
         worker.join().unwrap();
     }
-
 }
