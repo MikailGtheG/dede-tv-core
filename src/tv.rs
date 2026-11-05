@@ -16,6 +16,14 @@ impl TvSession {
         let picker = ChannelPicker::new(channels.iter().map(|(n, _)| n.clone()).collect(), None);
         Self { picker, channels, roots }
     }
+    /// Record a channel only after Kodi acknowledges a successful Player.Open.
+    pub fn confirm_playback(&self, db: &VirtualChannels, name: &str) -> Result<(), String> {
+        if !self.channels.iter().any(|(channel, _)| channel == name) {
+            return Err("channel not found".into());
+        }
+        db.set_last_channel(name).map_err(|e| format!("{e:?}"))
+    }
+
     pub fn handle(&mut self, key: RemoteKey, db: &VirtualChannels, now_ms: u64)
         -> Result<TvEvent, String>
     {
@@ -31,7 +39,8 @@ impl TvSession {
                             .map_err(|e| format!("{e:?}"))?
                     }
                 };
-                db.set_last_channel(&name).map_err(|e| format!("{e:?}"))?;
+                // Building a request is not evidence that Kodi started playback.
+                // The caller must send it and explicitly confirm success.
                 Ok(TvEvent::Playback(request))
             }
             PickerEvent::None => Ok(TvEvent::None),
@@ -54,6 +63,10 @@ mod tests {
             }
             _ => panic!("expected playback"),
         }
+        assert_eq!(db.last_channel().unwrap(), None);
+        assert!(tv.confirm_playback(&db, "missing").is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+        tv.confirm_playback(&db, "TRT 1").unwrap();
         assert_eq!(db.last_channel().unwrap().as_deref(), Some("TRT 1"));
         assert!(matches!(tv.handle(RemoteKey::Menu, &db, 0).unwrap(), TvEvent::None));
     }
