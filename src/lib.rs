@@ -2,6 +2,7 @@
 //! Not a media player or network-facing server.
 pub mod kodi;
 pub mod media;
+pub mod transport;
 use rand::{seq::SliceRandom, Rng};
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 use rusqlite::{params, Connection, OptionalExtension};
