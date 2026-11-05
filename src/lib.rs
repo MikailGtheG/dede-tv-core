@@ -1,11 +1,11 @@
 //! Dede TV virtual channels: deterministic schedule, no background transcoding.
 //! Not a media player or network-facing server.
 pub mod kodi;
-pub mod remote;
-pub mod picker;
-pub mod tv;
 pub mod media;
+pub mod picker;
+pub mod remote;
 pub mod transport;
+pub mod tv;
 use rand::{seq::SliceRandom, Rng};
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -34,14 +34,20 @@ pub enum ScheduleError {
     Serialization(serde_json::Error),
 }
 impl From<rusqlite::Error> for ScheduleError {
-    fn from(error: rusqlite::Error) -> Self { Self::Database(error) }
+    fn from(error: rusqlite::Error) -> Self {
+        Self::Database(error)
+    }
 }
 impl From<serde_json::Error> for ScheduleError {
-    fn from(error: serde_json::Error) -> Self { Self::Serialization(error) }
+    fn from(error: serde_json::Error) -> Self {
+        Self::Serialization(error)
+    }
 }
 pub type Result<T> = std::result::Result<T, ScheduleError>;
 
-pub struct VirtualChannels { db: Connection }
+pub struct VirtualChannels {
+    db: Connection,
+}
 
 impl VirtualChannels {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
@@ -58,7 +64,7 @@ impl VirtualChannels {
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
-            );"
+            );",
         )?;
         Ok(Self { db })
     }
@@ -79,11 +85,14 @@ impl VirtualChannels {
 
     /// Returns None on fresh installation; startup decides its default channel.
     pub fn last_channel(&self) -> Result<Option<String>> {
-        let found = self.db.query_row(
-            "SELECT value FROM settings WHERE key='last_channel'",
-            [],
-            |row| row.get(0),
-        ).optional()?;
+        let found = self
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key='last_channel'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
         Ok(found)
     }
 
@@ -91,10 +100,21 @@ impl VirtualChannels {
         if name.is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
             return Err(ScheduleError::InvalidChannel);
         }
-        if videos.is_empty() || videos.len() > crate::media::MAX_MEDIA_FILES
-            || videos.iter().any(|v| v.path.is_empty() || v.path.len() > 4096 || v.duration_ms == 0)
-            || videos.iter().map(|v| &v.path).collect::<std::collections::HashSet<_>>().len() != videos.len()
-            || videos.iter().try_fold(0u64, |a, v| a.checked_add(v.duration_ms)).is_none()
+        if videos.is_empty()
+            || videos.len() > crate::media::MAX_MEDIA_FILES
+            || videos
+                .iter()
+                .any(|v| v.path.is_empty() || v.path.len() > 4096 || v.duration_ms == 0)
+            || videos
+                .iter()
+                .map(|v| &v.path)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != videos.len()
+            || videos
+                .iter()
+                .try_fold(0u64, |a, v| a.checked_add(v.duration_ms))
+                .is_none()
             || now_ms > i64::MAX as u64
         {
             return Err(ScheduleError::InvalidPlaylist);
@@ -114,8 +134,11 @@ impl VirtualChannels {
 
     /// Return local channel names in a stable order for the TV channel picker.
     pub fn list_channels(&self) -> Result<Vec<String>> {
-        let mut stmt = self.db.prepare("SELECT name FROM channels ORDER BY name COLLATE NOCASE, name")?;
-        let names = stmt.query_map([], |row| row.get::<_, String>(0))?
+        let mut stmt = self
+            .db
+            .prepare("SELECT name FROM channels ORDER BY name COLLATE NOCASE, name")?;
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(names)
     }
@@ -125,26 +148,34 @@ impl VirtualChannels {
         let tx = self.db.transaction()?;
         let changed = tx.execute("DELETE FROM channels WHERE name=?1", [name])?;
         if changed != 0 {
-            tx.execute("DELETE FROM settings WHERE key='last_channel' AND (value=?1 OR value=?2)",
-                rusqlite::params![name, format!("virtual:{name}")])?;
+            tx.execute(
+                "DELETE FROM settings WHERE key='last_channel' AND (value=?1 OR value=?2)",
+                rusqlite::params![name, format!("virtual:{name}")],
+            )?;
         }
         tx.commit()?;
         Ok(changed != 0)
     }
 
     pub fn current(&self, name: &str, now_ms: u64) -> Result<Playback> {
-        let row: Option<(String, i64, i64)> = self.db.query_row(
-            "SELECT playlist, cycle_start_ms, shuffle_seed FROM channels WHERE name=?1",
-            [name],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        ).optional()?;
+        let row: Option<(String, i64, i64)> = self
+            .db
+            .query_row(
+                "SELECT playlist, cycle_start_ms, shuffle_seed FROM channels WHERE name=?1",
+                [name],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
         let (payload, start_ms, seed) = row.ok_or(ScheduleError::NotFound)?;
         let videos: Vec<Video> = serde_json::from_str(&payload)?;
         if videos.is_empty() || start_ms < 0 || seed < 0 || now_ms > i64::MAX as u64 {
             return Err(ScheduleError::InvalidPlaylist);
         }
-        let total = videos.iter().try_fold(0u64, |a, v| a.checked_add(v.duration_ms))
-            .filter(|n| *n > 0).ok_or(ScheduleError::InvalidPlaylist)?;
+        let total = videos
+            .iter()
+            .try_fold(0u64, |a, v| a.checked_add(v.duration_ms))
+            .filter(|n| *n > 0)
+            .ok_or(ScheduleError::InvalidPlaylist)?;
         let elapsed = now_ms.saturating_sub(start_ms as u64);
         let cycle = elapsed / total;
         let mut position = elapsed % total;
@@ -171,7 +202,9 @@ fn permutation(videos: &[Video], seed: u64, cycle: u64) -> Vec<Video> {
 }
 
 fn shuffle_cycle(videos: &[Video], seed: u64, cycle: u64) -> Vec<Video> {
-    if videos.len() == 1 { return videos.to_vec(); }
+    if videos.len() == 1 {
+        return videos.to_vec();
+    }
     if videos.len() == 2 {
         // To prevent an immediate boundary repeat with two videos,
         // both cycles must keep the same deterministic pair order.
@@ -199,7 +232,10 @@ mod tests {
     use tempfile::tempdir;
 
     fn v(name: &str, ms: u64) -> Video {
-        Video { path: name.to_owned(), duration_ms: ms }
+        Video {
+            path: name.to_owned(),
+            duration_ms: ms,
+        }
     }
     #[test]
     fn remembers_last_selected_channel_after_restart() {
@@ -211,7 +247,10 @@ mod tests {
         drop(s);
         let s = VirtualChannels::open(&db).unwrap();
         assert_eq!(s.last_channel().unwrap().as_deref(), Some("TRT 1"));
-        assert!(matches!(s.set_last_channel("bad\nname"), Err(ScheduleError::InvalidChannel)));
+        assert!(matches!(
+            s.set_last_channel("bad\nname"),
+            Err(ScheduleError::InvalidChannel)
+        ));
     }
 
     #[test]
@@ -234,33 +273,53 @@ mod tests {
     #[test]
     fn prevents_boundary_repeats_for_three_or_more() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
-        s.set_channel("A", &[v("a",100),v("b",100),v("c",100)], 0).unwrap();
+        s.set_channel("A", &[v("a", 100), v("b", 100), v("c", 100)], 0)
+            .unwrap();
         for cycle in 1..200 {
-            assert_ne!(s.current("A", cycle*300-1).unwrap().path,
-                       s.current("A", cycle*300).unwrap().path);
+            assert_ne!(
+                s.current("A", cycle * 300 - 1).unwrap().path,
+                s.current("A", cycle * 300).unwrap().path
+            );
         }
     }
     #[test]
     fn handles_many_cycles_without_looping_over_each_cycle() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
-        s.set_channel("A", &[v("a",100),v("b",100),v("c",100)], 0).unwrap();
+        s.set_channel("A", &[v("a", 100), v("b", 100), v("c", 100)], 0)
+            .unwrap();
         assert!(s.current("A", 9_000_000_000).is_ok());
     }
     #[test]
     fn rejects_oversized_playlists_before_persisting() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
         let oversized = (0..=crate::media::MAX_MEDIA_FILES)
-            .map(|i| v(&format!("{i}.mkv"), 1000)).collect::<Vec<_>>();
-        assert!(matches!(s.set_channel("A", &oversized, 0), Err(ScheduleError::InvalidPlaylist)));
+            .map(|i| v(&format!("{i}.mkv"), 1000))
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            s.set_channel("A", &oversized, 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
         assert!(s.list_channels().unwrap().is_empty());
-        assert!(matches!(s.set_channel("A", &[v(&"a".repeat(4097), 1000)], 0), Err(ScheduleError::InvalidPlaylist)));
+        assert!(matches!(
+            s.set_channel("A", &[v(&"a".repeat(4097), 1000)], 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
     }
     #[test]
     fn rejects_invalid_channel_data() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
-        assert!(matches!(s.set_channel("", &[v("a",100)], 0), Err(ScheduleError::InvalidChannel)));
-        assert!(matches!(s.set_channel("A", &[], 0), Err(ScheduleError::InvalidPlaylist)));
-        assert!(matches!(s.set_channel("A", &[v("a",100),v("a",100)], 0), Err(ScheduleError::InvalidPlaylist)));
+        assert!(matches!(
+            s.set_channel("", &[v("a", 100)], 0),
+            Err(ScheduleError::InvalidChannel)
+        ));
+        assert!(matches!(
+            s.set_channel("A", &[], 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert!(matches!(
+            s.set_channel("A", &[v("a", 100), v("a", 100)], 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
     }
     #[test]
     fn channel_listing_and_removal_persist() {
@@ -275,7 +334,10 @@ mod tests {
         assert!(!s.remove_channel("not-found").unwrap());
         assert!(s.remove_channel("Dede Film").unwrap());
         assert_eq!(s.last_channel().unwrap(), None);
-        assert!(matches!(s.current("Dede Film", 1), Err(ScheduleError::NotFound)));
+        assert!(matches!(
+            s.current("Dede Film", 1),
+            Err(ScheduleError::NotFound)
+        ));
         drop(s);
         let s = VirtualChannels::open(&db).unwrap();
         assert_eq!(s.list_channels().unwrap(), vec!["ZDF"]);
@@ -284,10 +346,12 @@ mod tests {
     #[test]
     fn handles_two_item_cycle_boundaries() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
-        s.set_channel("A", &[v("a",100),v("b",100)], 0).unwrap();
+        s.set_channel("A", &[v("a", 100), v("b", 100)], 0).unwrap();
         for cycle in 1..100 {
-            assert_ne!(s.current("A", cycle*200-1).unwrap().path,
-                       s.current("A", cycle*200).unwrap().path);
+            assert_ne!(
+                s.current("A", cycle * 200 - 1).unwrap().path,
+                s.current("A", cycle * 200).unwrap().path
+            );
         }
     }
 }
