@@ -246,9 +246,7 @@ mod tests {
             let (mut client, _) = listener.accept().unwrap();
             let mut input = [0u8; 256];
             let _ = client.read(&mut input).unwrap();
-            client
-                .write_all(br#"{"jsonrpc":"2.0","id":7}"#)
-                .unwrap();
+            client.write_all(br#"{"jsonrpc":"2.0","id":7}"#).unwrap();
         });
         let request = serde_json::json!({
             "jsonrpc":"2.0","method":"Player.Open","id":7,
