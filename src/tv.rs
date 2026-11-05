@@ -34,7 +34,10 @@ impl TvSession {
     }
     /// Record a channel only after Kodi acknowledges a successful Player.Open.
     pub fn confirm_playback(&self, db: &VirtualChannels, name: &str) -> Result<(), String> {
-        let (_, source) = self.channels.iter().find(|(channel, _)| channel == name)
+        let (_, source) = self
+            .channels
+            .iter()
+            .find(|(channel, _)| channel == name)
             .ok_or("channel not found")?;
         let key = match source {
             Source::Pvr(id) => format!("pvr:{id}"),
@@ -106,7 +109,10 @@ mod tests {
         let db = VirtualChannels::open(":memory:").unwrap();
         let tv = TvSession::new(vec![("Movies".into(), Source::Virtual)], vec![]);
         tv.confirm_playback(&db, "Movies").unwrap();
-        assert_eq!(db.last_channel().unwrap().as_deref(), Some("virtual:Movies"));
+        assert_eq!(
+            db.last_channel().unwrap().as_deref(),
+            Some("virtual:Movies")
+        );
     }
 
     #[test]
