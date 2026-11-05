@@ -22,6 +22,7 @@ fn usage() -> &'static str {
        request-pvr CHANNEL_ID\n\
        request-virtual NAME APPROVED_MEDIA_ROOT\n\
        play-pvr CHANNEL_ID\n\
+       resume-last APPROVED_MEDIA_ROOT\n\
        play-virtual NAME APPROVED_MEDIA_ROOT\n\
      Note: play-* contacts Kodi strictly on 127.0.0.1:9090."
 }
@@ -77,6 +78,25 @@ fn run() -> Result<(), String> {
             let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
                 .map_err(|e| format!("{e:?}"))?;
             println!("{request}");
+        }
+        "resume-last" if params.len() == 1 => {
+            if let Some(last) = channels.last_channel().map_err(|e| format!("{e:?}"))? {
+                let request = if let Some(id) = last.strip_prefix("pvr:") {
+                    let id = id.parse::<u32>().map_err(|_| "invalid saved PVR channel ID")?;
+                    kodi::open_pvr_channel(id, 1)
+                } else {
+                    let name = last.strip_prefix("virtual:").unwrap_or(&last);
+                    let play = channels.current(name, now_ms()?)
+                        .map_err(|e| format!("{e:?}"))?;
+                    kodi::open_virtual_channel(&play, &[PathBuf::from(&params[0])], 1)
+                        .map_err(|e| format!("{e:?}"))?
+                };
+                let reply = transport::send_playback(&request)
+                    .map_err(|e| e.to_string())?;
+                println!("{reply}");
+            } else {
+                println!("No last channel stored");
+            }
         }
         "play-pvr" if params.len() == 1 => {
             let id = params[0].parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
