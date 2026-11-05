@@ -26,7 +26,7 @@ fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiErr
     }
     let is_allowed = roots.iter().any(|root| {
         fs::canonicalize(root)
-            .map(|safe_root| canonical.starts_with(safe_root) && canonical != safe_root)
+            .map(|safe_root| canonical.starts_with(&safe_root) && canonical != safe_root)
             .unwrap_or(false)
     });
     if !is_allowed {
