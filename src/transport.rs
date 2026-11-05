@@ -28,15 +28,16 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     {
         return Err(invalid("only identified Player.Open requests are allowed"));
     }
-    let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port));
-    let mut stream = TcpStream::connect_timeout(&address, TIMEOUT)?;
-    stream.set_read_timeout(Some(TIMEOUT))?;
-    stream.set_write_timeout(Some(TIMEOUT))?;
+    // Validate before connecting: invalid input must not touch Kodi at all.
     let mut payload = serde_json::to_vec(request)?;
     if payload.len() > 64 * 1024 {
         return Err(invalid("request exceeds Kodi control size limit"));
     }
     payload.push(b'\n');
+    let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port));
+    let mut stream = TcpStream::connect_timeout(&address, TIMEOUT)?;
+    stream.set_read_timeout(Some(TIMEOUT))?;
+    stream.set_write_timeout(Some(TIMEOUT))?;
     stream.write_all(&payload)?;
 
     let deadline = Instant::now() + TIMEOUT;
@@ -125,6 +126,15 @@ mod tests {
         });
         assert_eq!(send_to_loopback(port, &request).unwrap()["result"], "OK");
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn rejects_oversized_request_before_connecting() {
+        let request = serde_json::json!({
+            "jsonrpc":"2.0", "method":"Player.Open", "id":7,
+            "params":{"item":{"file":"x".repeat(70_000)}}
+        });
+        assert_eq!(send_to_loopback(1, &request).unwrap_err().kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
