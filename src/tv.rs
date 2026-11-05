@@ -120,6 +120,30 @@ mod tests {
     }
 
     #[test]
+    fn confirmation_uses_requested_channel_not_current_picker_selection() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("TRT 1".into(), Source::Pvr(17)),
+                ("ATV".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        let requested = match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
+            TvEvent::Playback { channel, .. } => channel,
+            _ => panic!("expected playback request"),
+        };
+        // The user can navigate while Kodi is processing the first request.
+        tv.handle(RemoteKey::ChannelDown, &db, 0).unwrap();
+        tv.confirm_playback(&db, &requested).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
     fn empty_channel_list_is_safe() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(vec![], vec![]);
