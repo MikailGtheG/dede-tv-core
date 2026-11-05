@@ -24,6 +24,14 @@ fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiErr
     if !canonical.is_file() {
         return Err(KodiError::OutsideApprovedMediaRoot);
     }
+    let extension_allowed = canonical
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(),
+            "mp4" | "mkv" | "mov" | "m4v" | "webm" | "avi" | "ts"));
+    if !extension_allowed {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
     let is_allowed = roots.iter().any(|root| {
         fs::canonicalize(root)
             .map(|safe_root| canonical.starts_with(&safe_root) && canonical != safe_root)
@@ -132,6 +140,22 @@ mod tests {
                 Err(KodiError::OutsideApprovedMediaRoot)
             ));
         }
+    }
+
+    #[test]
+    fn refuses_non_video_files_even_within_approved_root() {
+        let dir = tempdir().unwrap();
+        let document = dir.path().join("secrets.txt");
+        fs::write(&document, b"private").unwrap();
+        let item = Playback {
+            path: document.to_string_lossy().to_string(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        assert!(matches!(
+            open_virtual_channel(&item, &[dir.path().to_path_buf()], 1),
+            Err(KodiError::OutsideApprovedMediaRoot)
+        ));
     }
 
     #[test]
