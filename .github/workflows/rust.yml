@@ -15,3 +15,16 @@ jobs:
       - run: cargo fmt --all
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --all-targets
+      - name: Local CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$(mktemp -d)"
+          trap 'rm -rf "$directory"' EXIT
+          touch "$directory/film.mkv"
+          cargo run --quiet -- --db "$directory/state.db" add "Dede Film" "$directory/film.mkv" 3600000
+          cargo run --quiet -- --db "$directory/state.db" select "Dede Film"
+          test "$(cargo run --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          cargo run --quiet -- --db "$directory/state.db" now "Dede Film"
+          cargo run --quiet -- --db "$directory/state.db" request-virtual "Dede Film" "$directory" | grep -q '"method":"Player.Open"'
+          cargo run --quiet -- --db "$directory/state.db" request-pvr 12 | grep -q '"channelid":12'
