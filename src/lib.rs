@@ -109,6 +109,26 @@ impl VirtualChannels {
         Ok(())
     }
 
+    /// Return local channel names in a stable order for the TV channel picker.
+    pub fn list_channels(&self) -> Result<Vec<String>> {
+        let mut stmt = self.db.prepare("SELECT name FROM channels ORDER BY name COLLATE NOCASE, name")?;
+        let names = stmt.query_map([], |row| row.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(names)
+    }
+
+    /// Remove a local channel and clear its remembered selection atomically.
+    pub fn remove_channel(&mut self, name: &str) -> Result<bool> {
+        let tx = self.db.transaction()?;
+        let changed = tx.execute("DELETE FROM channels WHERE name=?1", [name])?;
+        if changed != 0 {
+            tx.execute("DELETE FROM settings WHERE key='last_channel' AND (value=?1 OR value=?2)",
+                rusqlite::params![name, format!("virtual:{name}")])?;
+        }
+        tx.commit()?;
+        Ok(changed != 0)
+    }
+
     pub fn current(&self, name: &str, now_ms: u64) -> Result<Playback> {
         let row: Option<(String, i64, i64)> = self.db.query_row(
             "SELECT playlist, cycle_start_ms, shuffle_seed FROM channels WHERE name=?1",
@@ -230,6 +250,25 @@ mod tests {
         assert!(matches!(s.set_channel("A", &[], 0), Err(ScheduleError::InvalidPlaylist)));
         assert!(matches!(s.set_channel("A", &[v("a",100),v("a",100)], 0), Err(ScheduleError::InvalidPlaylist)));
     }
+    #[test]
+    fn channel_listing_and_removal_persist() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("channels.sqlite");
+        let mut s = VirtualChannels::open(&db).unwrap();
+        assert!(s.list_channels().unwrap().is_empty());
+        s.set_channel("ZDF", &[v("z.mkv", 1000)], 0).unwrap();
+        s.set_channel("Dede Film", &[v("d.mkv", 1000)], 0).unwrap();
+        s.set_last_channel("virtual:Dede Film").unwrap();
+        assert_eq!(s.list_channels().unwrap(), vec!["Dede Film", "ZDF"]);
+        assert!(!s.remove_channel("not-found").unwrap());
+        assert!(s.remove_channel("Dede Film").unwrap());
+        assert_eq!(s.last_channel().unwrap(), None);
+        assert!(matches!(s.current("Dede Film", 1), Err(ScheduleError::NotFound)));
+        drop(s);
+        let s = VirtualChannels::open(&db).unwrap();
+        assert_eq!(s.list_channels().unwrap(), vec!["ZDF"]);
+    }
+
     #[test]
     fn handles_two_item_cycle_boundaries() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
