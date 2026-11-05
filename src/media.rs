@@ -87,6 +87,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let file = dir.path().join("video.mp4");
         fs::write(&file, b"v").unwrap();
-        assert_eq!(discover_media(&file).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            discover_media(&file).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 }
