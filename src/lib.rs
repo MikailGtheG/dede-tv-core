@@ -1,5 +1,6 @@
 //! Dede TV virtual channels: deterministic schedule, no background transcoding.
 //! Not a media player or network-facing server.
+pub mod kodi;
 use rand::{seq::SliceRandom, Rng};
 use rand_chacha::{rand_core::SeedableRng, ChaCha8Rng};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -48,9 +49,37 @@ impl VirtualChannels {
                 playlist TEXT NOT NULL,
                 cycle_start_ms INTEGER NOT NULL,
                 shuffle_seed INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
             );"
         )?;
         Ok(Self { db })
+    }
+
+    /// Persist the selected live channel so startup can resume it.
+    /// Values are logical channel identifiers; never use them as filesystem paths.
+    pub fn set_last_channel(&self, channel: &str) -> Result<()> {
+        if channel.is_empty() || channel.len() > 100 || channel.chars().any(char::is_control) {
+            return Err(ScheduleError::InvalidChannel);
+        }
+        self.db.execute(
+            "INSERT INTO settings(key,value) VALUES('last_channel',?1)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [channel],
+        )?;
+        Ok(())
+    }
+
+    /// Returns None on fresh installation; startup decides its default channel.
+    pub fn last_channel(&self) -> Result<Option<String>> {
+        let found = self.db.query_row(
+            "SELECT value FROM settings WHERE key='last_channel'",
+            [],
+            |row| row.get(0),
+        ).optional()?;
+        Ok(found)
     }
 
     pub fn set_channel(&mut self, name: &str, videos: &[Video], now_ms: u64) -> Result<()> {
@@ -146,6 +175,19 @@ mod tests {
     fn v(name: &str, ms: u64) -> Video {
         Video { path: name.to_owned(), duration_ms: ms }
     }
+    #[test]
+    fn remembers_last_selected_channel_after_restart() {
+        let dir = tempdir().unwrap();
+        let db = dir.path().join("last.sqlite");
+        let s = VirtualChannels::open(&db).unwrap();
+        assert_eq!(s.last_channel().unwrap(), None);
+        s.set_last_channel("TRT 1").unwrap();
+        drop(s);
+        let s = VirtualChannels::open(&db).unwrap();
+        assert_eq!(s.last_channel().unwrap().as_deref(), Some("TRT 1"));
+        assert!(matches!(s.set_last_channel("bad\\nname"), Err(ScheduleError::InvalidChannel)));
+    }
+
     #[test]
     fn position_advances_while_tuned_away() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
