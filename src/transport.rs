@@ -205,7 +205,7 @@ mod tests {
         let worker = thread::spawn(move || {
             let (mut client, _) = listener.accept().unwrap();
             let mut input = [0u8; 256];
-            client.read(&mut input).unwrap();
+            let _received = client.read(&mut input).unwrap();
             client.write_all(br#"{"jsonrpc":"2.0","id":7,"error":{"code":-32602,"message":"Invalid params"}}"#).unwrap();
         });
         let request = serde_json::json!({"jsonrpc":"2.0","method":"Player.Open","id":7,"params":{"item":{"channelid":1}}});
