@@ -1,6 +1,7 @@
 //! Dede TV virtual channels: deterministic schedule, no background transcoding.
 //! Not a media player or network-facing server.
 pub mod kodi;
+pub mod remote;
 pub mod media;
 pub mod transport;
 use rand::{seq::SliceRandom, Rng};
