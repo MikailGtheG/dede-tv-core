@@ -23,8 +23,7 @@ pub fn send_playback(request: &Value) -> io::Result<Value> {
 }
 
 fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
-    if request["jsonrpc"] != "2.0" || request["method"] != "Player.Open"
-        || !request["id"].is_u64()
+    if request["jsonrpc"] != "2.0" || request["method"] != "Player.Open" || !request["id"].is_u64()
     {
         return Err(invalid("only identified Player.Open requests are allowed"));
     }
@@ -83,7 +82,10 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         }
         let remaining = deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero() {
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "Kodi reply deadline expired"));
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "Kodi reply deadline expired",
+            ));
         }
         stream.set_read_timeout(Some(remaining))?;
         let count = stream.read(&mut buffer)?;
@@ -134,12 +136,16 @@ mod tests {
             "jsonrpc":"2.0", "method":"Player.Open", "id":7,
             "params":{"item":{"file":"x".repeat(70_000)}}
         });
-        assert_eq!(send_to_loopback(1, &request).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            send_to_loopback(1, &request).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
     }
 
     #[test]
     fn rejects_unapproved_methods_before_connecting() {
-        let request = serde_json::json!({"jsonrpc":"2.0","method":"Settings.SetSettingValue","id":7});
+        let request =
+            serde_json::json!({"jsonrpc":"2.0","method":"Settings.SetSettingValue","id":7});
         assert_eq!(
             send_to_loopback(1, &request).unwrap_err().kind(),
             io::ErrorKind::InvalidData
@@ -154,10 +160,11 @@ mod tests {
             let (mut client, _) = listener.accept().unwrap();
             let mut request = [0u8; 256];
             let _received = client.read(&mut request).unwrap();
-            client.write_all(
-                b"{\"jsonrpc\":\"2.0\",\"method\":\"Player.OnPlay\",\"params\":{}}"
-            ).unwrap();
-            client.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\"OK\"}")
+            client
+                .write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"Player.OnPlay\",\"params\":{}}")
+                .unwrap();
+            client
+                .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\"OK\"}")
                 .unwrap();
         });
         let request = serde_json::json!({
@@ -176,7 +183,8 @@ mod tests {
             let (mut client, _) = listener.accept().unwrap();
             let mut request = [0u8; 256];
             let _received = client.read(&mut request).unwrap();
-            client.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":999,\"result\":\"OK\"}")
+            client
+                .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":999,\"result\":\"OK\"}")
                 .unwrap();
         });
         let request = serde_json::json!({
