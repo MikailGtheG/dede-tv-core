@@ -116,7 +116,7 @@ mod tests {
         let worker = thread::spawn(move || {
             let (mut client, _) = listener.accept().unwrap();
             let mut request = [0u8; 256];
-            client.read(&mut request).unwrap();
+            let _received = client.read(&mut request).unwrap();
             client.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":999,\"result\":\"OK\"}")
                 .unwrap();
         });
