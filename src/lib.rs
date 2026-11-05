@@ -2,6 +2,7 @@
 //! Not a media player or network-facing server.
 pub mod kodi;
 pub mod remote;
+pub mod picker;
 pub mod media;
 pub mod transport;
 use rand::{seq::SliceRandom, Rng};
