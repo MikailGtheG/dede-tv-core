@@ -112,6 +112,7 @@ fn run() -> Result<(), String> {
             let id = params[0].parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
             let request = kodi::open_pvr_channel(id, 1);
             let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+            channels.set_last_channel(&format!("pvr:{id}")).map_err(|e| format!("{e:?}"))?;
             println!("{reply}");
         }
         "play-virtual" if params.len() == 2 => {
@@ -120,6 +121,8 @@ fn run() -> Result<(), String> {
             let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
                 .map_err(|e| format!("{e:?}"))?;
             let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+            channels.set_last_channel(&format!("virtual:{}", params[0]))
+                .map_err(|e| format!("{e:?}"))?;
             println!("{reply}");
         }
         _ => return Err(usage().to_string()),
