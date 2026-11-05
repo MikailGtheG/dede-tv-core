@@ -104,7 +104,10 @@ mod tests {
         assert_eq!(r["params"]["options"]["resume"]["minutes"], 2);
         assert_eq!(r["params"]["options"]["resume"]["seconds"], 6);
         assert_eq!(r["params"]["options"]["resume"]["milliseconds"], 123);
-        assert_eq!(r["params"]["item"]["file"], movie.to_string_lossy().as_ref());
+        assert_eq!(
+            r["params"]["item"]["file"],
+            movie.to_string_lossy().as_ref()
+        );
     }
 
     #[test]
@@ -155,7 +158,11 @@ mod tests {
 
     #[test]
     fn no_root_fails_closed() {
-        let item = Playback { path: "/tmp/a.mkv".to_string(), position_ms: 0, next_transition_ms: 0 };
+        let item = Playback {
+            path: "/tmp/a.mkv".to_string(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
         assert!(matches!(
             open_virtual_channel(&item, &[], 1),
             Err(KodiError::NoApprovedMediaRoot)
