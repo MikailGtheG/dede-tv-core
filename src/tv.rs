@@ -21,7 +21,7 @@ pub struct TvSession {
 pub enum TvEvent {
     None,
     Picker(PickerEvent),
-    Playback(Value),
+    Playback { channel: String, request: Value },
 }
 impl TvSession {
     pub fn new(channels: Vec<(String, Source)>, roots: Vec<PathBuf>) -> Self {
@@ -33,6 +33,9 @@ impl TvSession {
         }
     }
     /// Record a channel only after Kodi acknowledges a successful Player.Open.
+    /// Pass the channel identifier returned in TvEvent::Playback, not the
+    /// current picker selection: the user may have navigated elsewhere while
+    /// Kodi was processing the request.
     pub fn confirm_playback(&self, db: &VirtualChannels, name: &str) -> Result<(), String> {
         let (_, source) = self
             .channels
@@ -69,7 +72,7 @@ impl TvSession {
                 };
                 // Building a request is not evidence that Kodi started playback.
                 // The caller must send it and explicitly confirm success.
-                Ok(TvEvent::Playback(request))
+                Ok(TvEvent::Playback { channel: name, request })
             }
             PickerEvent::None => Ok(TvEvent::None),
             event => Ok(TvEvent::Picker(event)),
@@ -88,7 +91,8 @@ mod tests {
             TvEvent::Picker(_)
         ));
         match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
-            TvEvent::Playback(request) => {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, "TRT 1");
                 assert_eq!(request["method"], "Player.Open");
                 assert_eq!(request["params"]["item"]["channelid"], 17);
             }
