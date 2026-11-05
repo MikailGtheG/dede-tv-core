@@ -7,7 +7,10 @@ Native library for persistent virtual live-TV channel schedules; an early Dede T
 - Deterministic per-cycle pseudorandom video order.
 - Playback position based on wall-clock time; no background players or transcoding.
 - Bounded lookup independent of the number of elapsed cycles.
-- Six unit tests for persistence, timelines, rollover and input validation.
+- Unit tests for persistence, timelines, rollover, path security, media scanning and input validation.
+- Safe nonrecursive local media discovery (no symlinks, 10,000-file cap).
+- Typed Kodi JSON-RPC request construction for PVR and local-file playback.
+- Last selected channel persists across service restarts.
 
 ## Development
 ```sh
@@ -19,4 +22,4 @@ cargo test --all-targets
 The GitHub Actions workflow also runs these commands. No Python runtime is required by this component.
 
 ## Not implemented
-Kodi integration; media duration extraction; filesystem watchers; authenticated web API; hardware deployment. Never expose an unauthenticated management API on a network. Review all media roots, input caps and update signatures before shipping.
+Live Kodi transport and playback integration; media duration extraction; filesystem watchers; authenticated web API; hardware deployment. Never expose an unauthenticated management API on a network. Review all media roots, input caps and update signatures before shipping.
