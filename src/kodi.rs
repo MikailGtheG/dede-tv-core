@@ -24,12 +24,7 @@ fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiErr
     if !canonical.is_file() {
         return Err(KodiError::OutsideApprovedMediaRoot);
     }
-    let extension_allowed = canonical
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| matches!(ext.to_ascii_lowercase().as_str(),
-            "mp4" | "mkv" | "mov" | "m4v" | "webm" | "avi" | "ts"));
-    if !extension_allowed {
+    if !crate::media::has_video_extension(&canonical) {
         return Err(KodiError::OutsideApprovedMediaRoot);
     }
     let is_allowed = roots.iter().any(|root| {
