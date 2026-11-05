@@ -6,7 +6,7 @@
 use serde_json::Value;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const KODI_JSONRPC_PORT: u16 = 9090;
 const MAX_RESPONSE_BYTES: usize = 1024 * 1024;
@@ -39,9 +39,52 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     payload.push(b'\n');
     stream.write_all(&payload)?;
 
+    let deadline = Instant::now() + TIMEOUT;
     let mut raw = Vec::with_capacity(4096);
     let mut buffer = [0u8; 4096];
+    let mut announcements = 0usize;
     loop {
+        // Kodi may send asynchronous announcements before the matching reply,
+        // even as concatenated JSON documents with no separator.
+        while !raw.is_empty() {
+            let mut decoded = serde_json::Deserializer::from_slice(&raw).into_iter::<Value>();
+            match decoded.next() {
+                Some(Ok(response)) => {
+                    let used = decoded.byte_offset();
+                    raw.drain(..used);
+                    if response.get("method").is_some() && response.get("id").is_none() {
+                        announcements += 1;
+                        if announcements > 32 {
+                            return Err(invalid("too many unsolicited Kodi announcements"));
+                        }
+                        continue;
+                    }
+                    if response["id"] != request["id"] || response["jsonrpc"] != "2.0" {
+                        return Err(invalid("unexpected JSON-RPC reply identifier"));
+                    }
+                    if response.get("error").is_some() {
+                        return Err(invalid("Kodi rejected Player.Open"));
+                    }
+                    if response.get("result").is_none() {
+                        return Err(invalid("Kodi reply has no result"));
+                    }
+                    return Ok(response);
+                }
+                Some(Err(err)) if err.is_eof() => break,
+                Some(Err(err)) => {
+                    return Err(io::Error::new(io::ErrorKind::InvalidData, err));
+                }
+                None => {
+                    raw.clear();
+                    break;
+                }
+            }
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "Kodi reply deadline expired"));
+        }
+        stream.set_read_timeout(Some(remaining))?;
         let count = stream.read(&mut buffer)?;
         if count == 0 {
             return Err(io::Error::new(
@@ -53,22 +96,6 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
             return Err(invalid("Kodi response exceeds size limit"));
         }
         raw.extend_from_slice(&buffer[..count]);
-        match serde_json::from_slice::<Value>(&raw) {
-            Ok(response) => {
-                if response["id"] != request["id"] || response["jsonrpc"] != "2.0" {
-                    return Err(invalid("unexpected JSON-RPC reply identifier"));
-                }
-                if response.get("error").is_some() {
-                    return Err(invalid("Kodi rejected Player.Open"));
-                }
-                if response.get("result").is_none() {
-                    return Err(invalid("Kodi reply has no result"));
-                }
-                return Ok(response);
-            }
-            Err(err) if err.is_eof() => continue,
-            Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidData, err)),
-        }
     }
 }
 
@@ -107,6 +134,28 @@ mod tests {
             send_to_loopback(1, &request).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
+    }
+
+    #[test]
+    fn ignores_unsolicited_events_before_playback_acknowledgement() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = thread::spawn(move || {
+            let (mut client, _) = listener.accept().unwrap();
+            let mut request = [0u8; 256];
+            let _received = client.read(&mut request).unwrap();
+            client.write_all(
+                b"{\"jsonrpc\":\"2.0\",\"method\":\"Player.OnPlay\",\"params\":{}}"
+            ).unwrap();
+            client.write_all(b"{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":\"OK\"}")
+                .unwrap();
+        });
+        let request = serde_json::json!({
+            "jsonrpc":"2.0","method":"Player.Open","id":7,
+            "params":{"item":{"channelid":1}}
+        });
+        assert_eq!(send_to_loopback(port, &request).unwrap()["result"], "OK");
+        worker.join().unwrap();
     }
 
     #[test]
