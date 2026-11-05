@@ -1,6 +1,6 @@
 //! Local administrative CLI for the Dede TV Core prototype.
 //! Intentionally no HTTP listener. Only trusted administrators may modify this SQLite DB.
-use dede_tv_core::{kodi, Video, VirtualChannels};
+use dede_tv_core::{kodi, transport, Video, VirtualChannels};
 use std::env;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -21,7 +21,9 @@ fn usage() -> &'static str {
        now NAME\n\
        request-pvr CHANNEL_ID\n\
        request-virtual NAME APPROVED_MEDIA_ROOT\n\
-     Note: this CLI does not contact Kodi; it prints local-only JSON-RPC requests."
+       play-pvr CHANNEL_ID\n\
+       play-virtual NAME APPROVED_MEDIA_ROOT\n\
+     Note: play-* contacts Kodi strictly on 127.0.0.1:9090."
 }
 
 fn run() -> Result<(), String> {
@@ -75,6 +77,20 @@ fn run() -> Result<(), String> {
             let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
                 .map_err(|e| format!("{e:?}"))?;
             println!("{request}");
+        }
+        "play-pvr" if params.len() == 1 => {
+            let id = params[0].parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
+            let request = kodi::open_pvr_channel(id, 1);
+            let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+            println!("{reply}");
+        }
+        "play-virtual" if params.len() == 2 => {
+            let play = channels.current(&params[0], now_ms()?)
+                .map_err(|e| format!("{e:?}"))?;
+            let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
+                .map_err(|e| format!("{e:?}"))?;
+            let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+            println!("{reply}");
         }
         _ => return Err(usage().to_string()),
     }
