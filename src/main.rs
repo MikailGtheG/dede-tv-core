@@ -56,6 +56,16 @@ fn run() -> Result<(), String> {
                 .map_err(|e| format!("{e:?}"))?;
             println!("Added {} videos to channel {:?}", videos.len(), name);
         }
+        "list" if params.is_empty() => {
+            for name in channels.list_channels().map_err(|e| format!("{e:?}"))? {
+                println!("{name}");
+            }
+        }
+        "remove" if params.len() == 1 => {
+            let removed = channels.remove_channel(&params[0]).map_err(|e| format!("{e:?}"))?;
+            if !removed { return Err(format!("Channel not found: {:?}", params[0])); }
+            println!("Removed {:?}", params[0]);
+        }
         "select" if params.len() == 1 => {
             channels.set_last_channel(&params[0]).map_err(|e| format!("{e:?}"))?;
             println!("Selected {:?}", params[0]);
