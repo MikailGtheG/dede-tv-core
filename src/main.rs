@@ -43,12 +43,17 @@ fn run() -> Result<(), String> {
             }
             let name = &params[0];
             let videos = params[1..]
-                .as_chunks::<2>().0.iter()
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| {
                     let ms = pair[1]
                         .parse::<u64>()
                         .map_err(|_| "duration must be a positive integer in milliseconds")?;
-                    Ok(Video { path: pair[0].clone(), duration_ms: ms })
+                    Ok(Video {
+                        path: pair[0].clone(),
+                        duration_ms: ms,
+                    })
                 })
                 .collect::<Result<Vec<_>, &str>>()?;
             channels
@@ -62,28 +67,44 @@ fn run() -> Result<(), String> {
             }
         }
         "remove" if params.len() == 1 => {
-            let removed = channels.remove_channel(&params[0]).map_err(|e| format!("{e:?}"))?;
-            if !removed { return Err(format!("Channel not found: {:?}", params[0])); }
+            let removed = channels
+                .remove_channel(&params[0])
+                .map_err(|e| format!("{e:?}"))?;
+            if !removed {
+                return Err(format!("Channel not found: {:?}", params[0]));
+            }
             println!("Removed {:?}", params[0]);
         }
         "select" if params.len() == 1 => {
-            channels.set_last_channel(&params[0]).map_err(|e| format!("{e:?}"))?;
+            channels
+                .set_last_channel(&params[0])
+                .map_err(|e| format!("{e:?}"))?;
             println!("Selected {:?}", params[0]);
         }
         "last" if params.is_empty() => {
-            println!("{}", channels.last_channel().map_err(|e| format!("{e:?}"))?.unwrap_or_default());
+            println!(
+                "{}",
+                channels
+                    .last_channel()
+                    .map_err(|e| format!("{e:?}"))?
+                    .unwrap_or_default()
+            );
         }
         "now" if params.len() == 1 => {
-            let play = channels.current(&params[0], now_ms()?)
+            let play = channels
+                .current(&params[0], now_ms()?)
                 .map_err(|e| format!("{e:?}"))?;
             println!("{} @ {} ms", play.path, play.position_ms);
         }
         "request-pvr" if params.len() == 1 => {
-            let id = params[0].parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
+            let id = params[0]
+                .parse::<u32>()
+                .map_err(|_| "invalid PVR channel ID")?;
             println!("{}", kodi::open_pvr_channel(id, 1));
         }
         "request-virtual" if params.len() == 2 => {
-            let play = channels.current(&params[0], now_ms()?)
+            let play = channels
+                .current(&params[0], now_ms()?)
                 .map_err(|e| format!("{e:?}"))?;
             let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
                 .map_err(|e| format!("{e:?}"))?;
@@ -92,36 +113,44 @@ fn run() -> Result<(), String> {
         "resume-last" if params.len() == 1 => {
             if let Some(last) = channels.last_channel().map_err(|e| format!("{e:?}"))? {
                 let request = if let Some(id) = last.strip_prefix("pvr:") {
-                    let id = id.parse::<u32>().map_err(|_| "invalid saved PVR channel ID")?;
+                    let id = id
+                        .parse::<u32>()
+                        .map_err(|_| "invalid saved PVR channel ID")?;
                     kodi::open_pvr_channel(id, 1)
                 } else {
                     let name = last.strip_prefix("virtual:").unwrap_or(&last);
-                    let play = channels.current(name, now_ms()?)
+                    let play = channels
+                        .current(name, now_ms()?)
                         .map_err(|e| format!("{e:?}"))?;
                     kodi::open_virtual_channel(&play, &[PathBuf::from(&params[0])], 1)
                         .map_err(|e| format!("{e:?}"))?
                 };
-                let reply = transport::send_playback(&request)
-                    .map_err(|e| e.to_string())?;
+                let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
                 println!("{reply}");
             } else {
                 println!("No last channel stored");
             }
         }
         "play-pvr" if params.len() == 1 => {
-            let id = params[0].parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
+            let id = params[0]
+                .parse::<u32>()
+                .map_err(|_| "invalid PVR channel ID")?;
             let request = kodi::open_pvr_channel(id, 1);
             let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
-            channels.set_last_channel(&format!("pvr:{id}")).map_err(|e| format!("{e:?}"))?;
+            channels
+                .set_last_channel(&format!("pvr:{id}"))
+                .map_err(|e| format!("{e:?}"))?;
             println!("{reply}");
         }
         "play-virtual" if params.len() == 2 => {
-            let play = channels.current(&params[0], now_ms()?)
+            let play = channels
+                .current(&params[0], now_ms()?)
                 .map_err(|e| format!("{e:?}"))?;
             let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
                 .map_err(|e| format!("{e:?}"))?;
             let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
-            channels.set_last_channel(&format!("virtual:{}", params[0]))
+            channels
+                .set_last_channel(&format!("virtual:{}", params[0]))
                 .map_err(|e| format!("{e:?}"))?;
             println!("{reply}");
         }
