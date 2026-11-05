@@ -72,7 +72,10 @@ impl TvSession {
                 };
                 // Building a request is not evidence that Kodi started playback.
                 // The caller must send it and explicitly confirm success.
-                Ok(TvEvent::Playback { channel: name, request })
+                Ok(TvEvent::Playback {
+                    channel: name,
+                    request,
+                })
             }
             PickerEvent::None => Ok(TvEvent::None),
             event => Ok(TvEvent::Picker(event)),
