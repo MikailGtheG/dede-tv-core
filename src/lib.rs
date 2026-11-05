@@ -91,7 +91,8 @@ impl VirtualChannels {
         if name.is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
             return Err(ScheduleError::InvalidChannel);
         }
-        if videos.is_empty() || videos.iter().any(|v| v.path.is_empty() || v.duration_ms == 0)
+        if videos.is_empty() || videos.len() > crate::media::MAX_MEDIA_FILES
+            || videos.iter().any(|v| v.path.is_empty() || v.path.len() > 4096 || v.duration_ms == 0)
             || videos.iter().map(|v| &v.path).collect::<std::collections::HashSet<_>>().len() != videos.len()
             || videos.iter().try_fold(0u64, |a, v| a.checked_add(v.duration_ms)).is_none()
             || now_ms > i64::MAX as u64
@@ -244,6 +245,15 @@ mod tests {
         let mut s = VirtualChannels::open(":memory:").unwrap();
         s.set_channel("A", &[v("a",100),v("b",100),v("c",100)], 0).unwrap();
         assert!(s.current("A", 9_000_000_000).is_ok());
+    }
+    #[test]
+    fn rejects_oversized_playlists_before_persisting() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        let oversized = (0..=crate::media::MAX_MEDIA_FILES)
+            .map(|i| v(&format!("{i}.mkv"), 1000)).collect::<Vec<_>>();
+        assert!(matches!(s.set_channel("A", &oversized, 0), Err(ScheduleError::InvalidPlaylist)));
+        assert!(s.list_channels().unwrap().is_empty());
+        assert!(matches!(s.set_channel("A", &[v(&"a".repeat(4097), 1000)], 0), Err(ScheduleError::InvalidPlaylist)));
     }
     #[test]
     fn rejects_invalid_channel_data() {
