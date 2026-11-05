@@ -199,6 +199,27 @@ mod tests {
     }
 
     #[test]
+    fn rejects_truncated_json_reply_without_panicking() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = thread::spawn(move || {
+            let (mut client, _) = listener.accept().unwrap();
+            let mut input = [0u8; 256];
+            let _received = client.read(&mut input).unwrap();
+            client.write_all(br#"{"jsonrpc":"2.0","id":7,"result":"#).unwrap();
+        });
+        let request = serde_json::json!({
+            "jsonrpc":"2.0","method":"Player.Open","id":7,
+            "params":{"item":{"channelid":1}}
+        });
+        assert_eq!(
+            send_to_loopback(port, &request).unwrap_err().kind(),
+            io::ErrorKind::UnexpectedEof
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn rejects_kodi_error_response() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
