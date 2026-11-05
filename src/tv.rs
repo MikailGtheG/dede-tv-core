@@ -34,10 +34,13 @@ impl TvSession {
     }
     /// Record a channel only after Kodi acknowledges a successful Player.Open.
     pub fn confirm_playback(&self, db: &VirtualChannels, name: &str) -> Result<(), String> {
-        if !self.channels.iter().any(|(channel, _)| channel == name) {
-            return Err("channel not found".into());
-        }
-        db.set_last_channel(name).map_err(|e| format!("{e:?}"))
+        let (_, source) = self.channels.iter().find(|(channel, _)| channel == name)
+            .ok_or("channel not found")?;
+        let key = match source {
+            Source::Pvr(id) => format!("pvr:{id}"),
+            Source::Virtual => format!("virtual:{name}"),
+        };
+        db.set_last_channel(&key).map_err(|e| format!("{e:?}"))
     }
 
     pub fn handle(
@@ -92,12 +95,20 @@ mod tests {
         assert!(tv.confirm_playback(&db, "missing").is_err());
         assert_eq!(db.last_channel().unwrap(), None);
         tv.confirm_playback(&db, "TRT 1").unwrap();
-        assert_eq!(db.last_channel().unwrap().as_deref(), Some("TRT 1"));
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
         assert!(matches!(
             tv.handle(RemoteKey::Menu, &db, 0).unwrap(),
             TvEvent::None
         ));
     }
+    #[test]
+    fn confirmed_virtual_channel_uses_resumable_identity() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let tv = TvSession::new(vec![("Movies".into(), Source::Virtual)], vec![]);
+        tv.confirm_playback(&db, "Movies").unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("virtual:Movies"));
+    }
+
     #[test]
     fn empty_channel_list_is_safe() {
         let db = VirtualChannels::open(":memory:").unwrap();
