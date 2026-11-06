@@ -77,10 +77,29 @@ fn run() -> Result<(), String> {
             println!("Removed {:?}", params[0]);
         }
         "select" if params.len() == 1 => {
+            // Never persist a target that boot-resume cannot resolve.
+            // Bare names are retained for compatibility with early databases.
+            let selected = &params[0];
+            if let Some(id) = selected.strip_prefix("pvr:") {
+                let parsed = id.parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
+                if parsed == 0 {
+                    return Err("invalid PVR channel ID".into());
+                }
+            } else {
+                let name = selected.strip_prefix("virtual:").unwrap_or(selected);
+                if !channels
+                    .list_channels()
+                    .map_err(|e| format!("{e:?}"))?
+                    .iter()
+                    .any(|existing| existing == name)
+                {
+                    return Err(format!("Channel not found: {name:?}"));
+                }
+            }
             channels
-                .set_last_channel(&params[0])
+                .set_last_channel(selected)
                 .map_err(|e| format!("{e:?}"))?;
-            println!("Selected {:?}", params[0]);
+            println!("Selected {:?}", selected);
         }
         "last" if params.is_empty() => {
             println!(
