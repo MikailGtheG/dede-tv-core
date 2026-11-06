@@ -43,3 +43,29 @@ jobs:
             echo "Removing a missing channel unexpectedly succeeded" >&2
             exit 1
           fi
+  lock-dependencies:
+    # Never grant write access to code from pull requests or forks.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/initial-foundation'
+    needs: rust
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/initial-foundation
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Record resolved dependencies for reproducible builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          git add --force Cargo.lock
+          if git diff --cached --quiet; then
+            echo 'Cargo.lock already matches resolved dependencies'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'build(core): pin verified Cargo dependency graph'
+          git push origin HEAD:feat/initial-foundation
