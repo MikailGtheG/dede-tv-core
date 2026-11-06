@@ -38,14 +38,12 @@ fn run() -> Result<(), String> {
     let mut channels = VirtualChannels::open(&database).map_err(|e| format!("{e:?}"))?;
     match command {
         "add" => {
-            if params.len() < 3 || params.len().is_multiple_of(2) {
+            if params.len() < 3 || params.len() % 2 == 0 {
                 return Err(usage().to_string());
             }
             let name = &params[0];
             let videos = params[1..]
-                .as_chunks::<2>()
-                .0
-                .iter()
+                .chunks_exact(2)
                 .map(|pair| {
                     let ms = pair[1]
                         .parse::<u64>()
