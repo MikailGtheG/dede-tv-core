@@ -13,8 +13,9 @@ jobs:
         with:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --all-targets
+      - run: test -s Cargo.lock && cargo metadata --locked --no-deps > /dev/null
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --all-targets --locked
       - name: Preserve resolved Cargo dependencies
         uses: actions/upload-artifact@v4
         with:
@@ -29,43 +30,17 @@ jobs:
           directory="$(mktemp -d)"
           trap 'rm -rf "$directory"' EXIT
           touch "$directory/film.mkv"
-          cargo run --quiet -- --db "$directory/state.db" add "Dede Film" "$directory/film.mkv" 3600000
-          test "$(cargo run --quiet -- --db "$directory/state.db" list)" = "Dede Film"
-          cargo run --quiet -- --db "$directory/state.db" select "Dede Film"
-          test "$(cargo run --quiet -- --db "$directory/state.db" last)" = "Dede Film"
-          cargo run --quiet -- --db "$directory/state.db" now "Dede Film"
-          cargo run --quiet -- --db "$directory/state.db" request-virtual "Dede Film" "$directory" | grep -q '"method":"Player.Open"'
-          cargo run --quiet -- --db "$directory/state.db" request-pvr 12 | grep -q '"channelid":12'
-          cargo run --quiet -- --db "$directory/state.db" remove "Dede Film"
-          test -z "$(cargo run --quiet -- --db "$directory/state.db" list)"
-          test -z "$(cargo run --quiet -- --db "$directory/state.db" last)"
-          if cargo run --quiet -- --db "$directory/state.db" remove "Dede Film"; then
+          cargo run --locked --quiet -- --db "$directory/state.db" add "Dede Film" "$directory/film.mkv" 3600000
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" list)" = "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "Dede Film"
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" now "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" request-virtual "Dede Film" "$directory" | grep -q '"method":"Player.Open"'
+          cargo run --locked --quiet -- --db "$directory/state.db" request-pvr 12 | grep -q '"channelid":12'
+          cargo run --locked --quiet -- --db "$directory/state.db" remove "Dede Film"
+          test -z "$(cargo run --locked --quiet -- --db "$directory/state.db" list)"
+          test -z "$(cargo run --locked --quiet -- --db "$directory/state.db" last)"
+          if cargo run --locked --quiet -- --db "$directory/state.db" remove "Dede Film"; then
             echo "Removing a missing channel unexpectedly succeeded" >&2
             exit 1
           fi
-  lock-dependencies:
-    # Never grant write access to code from pull requests or forks.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/initial-foundation'
-    needs: rust
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feat/initial-foundation
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Record resolved dependencies for reproducible builds
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo generate-lockfile
-          git add --force Cargo.lock
-          if git diff --cached --quiet; then
-            echo 'Cargo.lock already matches resolved dependencies'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'build(core): pin verified Cargo dependency graph'
-          git push origin HEAD:feat/initial-foundation
