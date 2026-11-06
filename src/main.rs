@@ -27,6 +27,9 @@ fn usage() -> &'static str {
      Note: play-* contacts Kodi strictly on 127.0.0.1:9090."
 }
 
+// Debian 13's Rust compiler predates is_multiple_of and as_chunks.
+// Keep these two portable equivalents despite newer Clippy suggestions.
+#[allow(clippy::manual_is_multiple_of, clippy::chunks_exact_to_as_chunks)]
 fn run() -> Result<(), String> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.len() < 3 || args[0] != "--db" || args[1].is_empty() {
