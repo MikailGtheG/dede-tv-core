@@ -34,6 +34,19 @@ jobs:
           test "$(cargo run --locked --quiet -- --db "$directory/state.db" list)" = "Dede Film"
           cargo run --locked --quiet -- --db "$directory/state.db" select "Dede Film"
           test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          # Invalid selections must not poison next boot's persisted state.
+          if cargo run --locked --quiet -- --db "$directory/state.db" select "Missing Channel"; then
+            echo 'Missing channel was incorrectly accepted' >&2
+            exit 1
+          fi
+          if cargo run --locked --quiet -- --db "$directory/state.db" select "pvr:0"; then
+            echo 'Invalid PVR identifier was incorrectly accepted' >&2
+            exit 1
+          fi
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "pvr:12"
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "pvr:12"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "virtual:Dede Film"
           cargo run --locked --quiet -- --db "$directory/state.db" now "Dede Film"
           cargo run --locked --quiet -- --db "$directory/state.db" request-virtual "Dede Film" "$directory" | grep -q '"method":"Player.Open"'
           cargo run --locked --quiet -- --db "$directory/state.db" request-pvr 12 | grep -q '"channelid":12'
