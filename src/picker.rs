@@ -89,6 +89,7 @@ impl ChannelPicker {
     pub fn replace_channels(&mut self, channels: Vec<String>) -> PickerEvent {
         let was_open = self.remote.screen() == crate::remote::Screen::ChannelList;
         let previous_selection = self.selected;
+        let list_changed = self.channels != channels;
         // Preserve the selected occurrence when display names are duplicated.
         // Matching only the name would silently jump to the first duplicate.
         let current = self.selected().map(str::to_owned);
@@ -124,7 +125,8 @@ impl ChannelPicker {
                 PickerEvent::None
             };
         }
-        if was_open && self.selected != previous_selection {
+        // Even when the index stays the same, a changed list must be redrawn.
+        if was_open && (list_changed || self.selected != previous_selection) {
             PickerEvent::SelectionChanged {
                 selected: self.selected,
             }
@@ -248,6 +250,21 @@ mod tests {
             PickerEvent::SelectionChanged { selected: 1 }
         );
         assert_eq!(p.selected(), Some("TRT 1"));
+    }
+
+    #[test]
+    fn updating_open_list_notifies_even_when_selected_index_is_unchanged() {
+        let mut p = picker();
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(
+            p.replace_channels(vec!["TRT 1".into(), "Updated".into()]),
+            PickerEvent::SelectionChanged { selected: 0 }
+        );
+        assert_eq!(p.selected(), Some("TRT 1"));
+        assert_eq!(
+            p.replace_channels(vec!["TRT 1".into(), "Updated".into()]),
+            PickerEvent::None
+        );
     }
 
     #[test]
