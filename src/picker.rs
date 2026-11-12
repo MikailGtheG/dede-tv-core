@@ -118,10 +118,16 @@ impl ChannelPicker {
         // Never leave the controller in an unusable empty-list state.
         if self.channels.is_empty() {
             self.remote = RemoteController::default();
-            return if was_open { PickerEvent::Hide } else { PickerEvent::None };
+            return if was_open {
+                PickerEvent::Hide
+            } else {
+                PickerEvent::None
+            };
         }
         if was_open && self.selected != previous_selection {
-            PickerEvent::SelectionChanged { selected: self.selected }
+            PickerEvent::SelectionChanged {
+                selected: self.selected,
+            }
         } else {
             PickerEvent::None
         }
