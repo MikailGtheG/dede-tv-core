@@ -71,10 +71,26 @@ impl ChannelPicker {
     }
     /// Refresh channel list after an administrator changes it. Empty lists are safe.
     pub fn replace_channels(&mut self, channels: Vec<String>) {
+        // Preserve the selected occurrence when display names are duplicated.
+        // Matching only the name would silently jump to the first duplicate.
         let current = self.selected().map(str::to_owned);
+        let occurrence = current.as_ref().map(|name| {
+            self.channels[..self.selected]
+                .iter()
+                .filter(|candidate| *candidate == name)
+                .count()
+        });
         self.selected = current
             .as_deref()
-            .and_then(|id| channels.iter().position(|c| c == id))
+            .zip(occurrence)
+            .and_then(|(name, nth)| {
+                channels
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, candidate)| candidate == &name)
+                    .nth(nth)
+                    .map(|(index, _)| index)
+            })
             .unwrap_or(0);
         self.channels = channels;
     }
@@ -126,6 +142,17 @@ mod tests {
             assert!(!matches!(p.handle(key), PickerEvent::Tune(_)));
         }
     }
+    #[test]
+    fn replacement_preserves_second_duplicate_occurrence() {
+        let mut p = ChannelPicker::new(
+            vec!["Same".into(), "Same".into(), "Other".into()],
+            None,
+        );
+        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::Tune("Same".into()));
+        p.replace_channels(vec!["Same".into(), "Other".into(), "Same".into()]);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 2 });
+    }
+
     #[test]
     fn replacement_preserves_selection_if_possible() {
         let mut p = picker();
