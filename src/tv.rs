@@ -59,11 +59,13 @@ impl TvSession {
     ) -> Result<TvEvent, String> {
         match self.picker.handle(key) {
             PickerEvent::Tune(name) => {
-                let (_, source) = self
-                    .channels
-                    .iter()
-                    .find(|(n, _)| *n == name)
-                    .ok_or("channel not found")?;
+                // The picker currently identifies channels by display name.
+                // Never tune an arbitrary source when names are duplicated.
+                let mut matches = self.channels.iter().filter(|(n, _)| *n == name);
+                let (_, source) = matches.next().ok_or("channel not found")?;
+                if matches.next().is_some() {
+                    return Err("ambiguous channel name".into());
+                }
                 let request = match source {
                     Source::Pvr(id) => kodi::open_pvr_channel(*id, 1),
                     Source::Virtual => {
@@ -159,6 +161,24 @@ mod tests {
             vec![],
         );
         assert!(tv.confirm_playback(&db, "Same").is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
+    fn duplicate_names_cannot_tune_an_arbitrary_pvr_source() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("Same".into(), Source::Pvr(17)),
+                ("Same".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
         assert_eq!(db.last_channel().unwrap(), None);
     }
 
