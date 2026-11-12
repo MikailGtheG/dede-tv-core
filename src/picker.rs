@@ -37,6 +37,13 @@ impl ChannelPicker {
         self.remote.screen()
     }
     pub fn handle(&mut self, key: RemoteKey) -> PickerEvent {
+        // Do not open a blank channel list when no channels are configured.
+        if self.channels.is_empty()
+            && self.remote.screen() == crate::remote::Screen::LiveTv
+            && key == RemoteKey::Ok
+        {
+            return PickerEvent::None;
+        }
         match self.remote.handle(key) {
             Action::ShowChannels => PickerEvent::Show {
                 selected: self.selected,
@@ -145,6 +152,15 @@ mod tests {
             assert!(!matches!(p.handle(key), PickerEvent::Tune(_)));
         }
     }
+    #[test]
+    fn empty_list_does_not_open_channel_overlay() {
+        let mut p = ChannelPicker::new(vec![], None);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::None);
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+        p.replace_channels(vec!["TRT 1".into()]);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+    }
+
     #[test]
     fn replacement_preserves_second_duplicate_occurrence() {
         let mut p = ChannelPicker::new(vec!["Same".into(), "Same".into(), "Other".into()], None);
