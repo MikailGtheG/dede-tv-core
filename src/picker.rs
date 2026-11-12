@@ -71,6 +71,10 @@ impl ChannelPicker {
                 .unwrap_or(PickerEvent::Hide),
             Action::StepChannel(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
+                // With one channel, channel +/- must not restart playback.
+                if len == 1 {
+                    return PickerEvent::None;
+                }
                 if delta < 0 {
                     self.selected = (self.selected + len - 1) % len;
                 } else {
@@ -182,6 +186,15 @@ mod tests {
             p.handle(RemoteKey::Ok),
             PickerEvent::Tune("TRT 1".into())
         );
+    }
+
+    #[test]
+    fn single_channel_step_does_not_restart_playback() {
+        let mut p = ChannelPicker::new(vec!["TRT 1".into()], None);
+        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::None);
+        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::None);
+        assert_eq!(p.selected(), Some("TRT 1"));
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
     }
 
     #[test]
