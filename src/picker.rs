@@ -182,10 +182,7 @@ mod tests {
         assert_eq!(p.handle(RemoteKey::Up), PickerEvent::None);
         assert_eq!(p.handle(RemoteKey::Down), PickerEvent::None);
         assert_eq!(p.selected(), Some("TRT 1"));
-        assert_eq!(
-            p.handle(RemoteKey::Ok),
-            PickerEvent::Tune("TRT 1".into())
-        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Tune("TRT 1".into()));
     }
 
     #[test]
