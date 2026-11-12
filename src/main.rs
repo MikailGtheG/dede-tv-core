@@ -16,6 +16,8 @@ fn usage() -> &'static str {
     "Usage: dede-tv-core --db FILE COMMAND [ARGS]\n\
      Commands:\n\
        add NAME FILE DURATION_MS [FILE DURATION_MS ...]\n\
+       list\n\
+       remove NAME\n\
        select NAME\n\
        last\n\
        now NAME\n\
@@ -32,6 +34,14 @@ fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
     match raw.parse::<u32>() {
         Ok(id) if id != 0 => Ok(id),
         _ => Err("invalid PVR channel ID"),
+    }
+}
+
+// Zero-length videos cannot advance a deterministic playlist.
+fn parse_duration_ms(raw: &str) -> Result<u64, &'static str> {
+    match raw.parse::<u64>() {
+        Ok(ms) if ms > 0 => Ok(ms),
+        _ => Err("duration must be a positive integer in milliseconds"),
     }
 }
 
@@ -56,9 +66,7 @@ fn run() -> Result<(), String> {
             let videos = params[1..]
                 .chunks_exact(2)
                 .map(|pair| {
-                    let ms = pair[1]
-                        .parse::<u64>()
-                        .map_err(|_| "duration must be a positive integer in milliseconds")?;
+                    let ms = parse_duration_ms(&pair[1])?;
                     Ok(Video {
                         path: pair[0].clone(),
                         duration_ms: ms,
@@ -187,7 +195,16 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_pvr_id;
+    use super::{parse_duration_ms, parse_pvr_id};
+
+    #[test]
+    fn video_durations_must_be_positive() {
+        assert_eq!(parse_duration_ms("1"), Ok(1));
+        assert_eq!(parse_duration_ms("18446744073709551615"), Ok(u64::MAX));
+        for invalid in ["0", "-1", "abc", "18446744073709551616", ""] {
+            assert!(parse_duration_ms(invalid).is_err());
+        }
+    }
 
     #[test]
     fn pvr_ids_reject_zero_and_invalid_values() {
