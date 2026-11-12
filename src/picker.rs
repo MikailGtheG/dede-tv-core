@@ -211,6 +211,14 @@ mod tests {
     }
 
     #[test]
+    fn empty_channel_step_does_not_change_live_tv_screen() {
+        let mut p = ChannelPicker::new(vec![], None);
+        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::None);
+        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::None);
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+    }
+
+    #[test]
     fn replacement_preserves_second_duplicate_occurrence() {
         let mut p = ChannelPicker::new(vec!["Same".into(), "Same".into(), "Other".into()], None);
         assert_eq!(
