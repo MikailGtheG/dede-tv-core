@@ -148,7 +148,10 @@ mod tests {
             vec!["Same".into(), "Same".into(), "Other".into()],
             None,
         );
-        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::Tune("Same".into()));
+        assert_eq!(
+            p.handle(RemoteKey::ChannelDown),
+            PickerEvent::Tune("Same".into())
+        );
         p.replace_channels(vec!["Same".into(), "Other".into(), "Same".into()]);
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 2 });
     }
