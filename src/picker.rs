@@ -103,6 +103,11 @@ impl ChannelPicker {
             })
             .unwrap_or(0);
         self.channels = channels;
+        // An administrator can remove the last channel while the picker is open.
+        // Never leave the controller in an unusable empty-list state.
+        if self.channels.is_empty() {
+            self.remote = RemoteController::default();
+        }
     }
 }
 #[cfg(test)]
@@ -182,6 +187,17 @@ mod tests {
         p.replace_channels(vec!["Other".into(), "Same".into()]);
         assert_eq!(p.selected(), Some("Same"));
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+    }
+
+    #[test]
+    fn removing_last_channel_closes_picker_state() {
+        let mut p = picker();
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        p.replace_channels(vec![]);
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::None);
+        p.replace_channels(vec!["New".into()]);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
     }
 
     #[test]
