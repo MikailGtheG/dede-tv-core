@@ -37,11 +37,13 @@ impl TvSession {
     /// current picker selection: the user may have navigated elsewhere while
     /// Kodi was processing the request.
     pub fn confirm_playback(&self, db: &VirtualChannels, name: &str) -> Result<(), String> {
-        let (_, source) = self
-            .channels
-            .iter()
-            .find(|(channel, _)| channel == name)
-            .ok_or("channel not found")?;
+        // Names are used as playback confirmation tokens. Ambiguous names
+        // could persist the wrong source after Kodi acknowledges a request.
+        let mut matches = self.channels.iter().filter(|(channel, _)| channel == name);
+        let (_, source) = matches.next().ok_or("channel not found")?;
+        if matches.next().is_some() {
+            return Err("ambiguous channel name".into());
+        }
         let key = match source {
             Source::Pvr(id) => format!("pvr:{id}"),
             Source::Virtual => format!("virtual:{name}"),
@@ -144,6 +146,20 @@ mod tests {
         tv.handle(RemoteKey::ChannelDown, &db, 0).unwrap();
         tv.confirm_playback(&db, &requested).unwrap();
         assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
+    fn duplicate_names_cannot_confirm_the_wrong_playback_source() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let tv = TvSession::new(
+            vec![
+                ("Same".into(), Source::Pvr(17)),
+                ("Same".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        assert!(tv.confirm_playback(&db, "Same").is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
     }
 
     #[test]
