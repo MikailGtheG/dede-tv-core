@@ -31,6 +31,9 @@ fn usage() -> &'static str {
 
 // PVR channel IDs are one-based; zero must never reach Kodi or saved state.
 fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("invalid PVR channel ID");
+    }
     match raw.parse::<u32>() {
         Ok(id) if id != 0 => Ok(id),
         _ => Err("invalid PVR channel ID"),
@@ -210,7 +213,7 @@ mod tests {
     fn pvr_ids_reject_zero_and_invalid_values() {
         assert_eq!(parse_pvr_id("1"), Ok(1));
         assert_eq!(parse_pvr_id("4294967295"), Ok(u32::MAX));
-        for invalid in ["0", "-1", "abc", "4294967296", ""] {
+        for invalid in ["0", "-1", "+1", " 1", "1 ", "abc", "4294967296", ""] {
             assert!(parse_pvr_id(invalid).is_err());
         }
     }
