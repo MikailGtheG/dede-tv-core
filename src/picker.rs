@@ -146,7 +146,7 @@ mod tests {
     fn replacement_preserves_second_duplicate_occurrence() {
         let mut p = ChannelPicker::new(vec!["Same".into(), "Same".into(), "Other".into()], None);
         assert_eq!(
-            p.handle(RemoteKey::ChannelDown),
+            p.handle(RemoteKey::ChannelUp),
             PickerEvent::Tune("Same".into())
         );
         p.replace_channels(vec!["Same".into(), "Other".into(), "Same".into()]);
