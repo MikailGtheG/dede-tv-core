@@ -51,6 +51,11 @@ impl ChannelPicker {
             Action::HideChannels => PickerEvent::Hide,
             Action::MoveSelection(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
+                // A one-channel list has nowhere to move. Avoid emitting a
+                // spurious selection update on every remote key repeat.
+                if len == 1 {
+                    return PickerEvent::None;
+                }
                 if delta < 0 {
                     self.selected = (self.selected + len - 1) % len;
                 } else {
@@ -164,6 +169,19 @@ mod tests {
         assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
         p.replace_channels(vec!["TRT 1".into()]);
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+    }
+
+    #[test]
+    fn single_channel_navigation_does_not_emit_false_selection_changes() {
+        let mut p = ChannelPicker::new(vec!["TRT 1".into()], None);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(p.handle(RemoteKey::Up), PickerEvent::None);
+        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::None);
+        assert_eq!(p.selected(), Some("TRT 1"));
+        assert_eq!(
+            p.handle(RemoteKey::Ok),
+            PickerEvent::Tune("TRT 1".into())
+        );
     }
 
     #[test]
