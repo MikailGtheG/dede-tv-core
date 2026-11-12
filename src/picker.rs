@@ -87,7 +87,7 @@ impl ChannelPicker {
                 channels
                     .iter()
                     .enumerate()
-                    .filter(|(_, candidate)| candidate == &name)
+                    .filter(|(_, candidate)| candidate.as_str() == name)
                     .nth(nth)
                     .map(|(index, _)| index)
             })
