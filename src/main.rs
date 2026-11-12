@@ -27,6 +27,14 @@ fn usage() -> &'static str {
      Note: play-* contacts Kodi strictly on 127.0.0.1:9090."
 }
 
+// PVR channel IDs are one-based; zero must never reach Kodi or saved state.
+fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
+    match raw.parse::<u32>() {
+        Ok(id) if id != 0 => Ok(id),
+        _ => Err("invalid PVR channel ID"),
+    }
+}
+
 // Debian 13's Rust compiler predates is_multiple_of and as_chunks.
 // Keep these two portable equivalents despite newer Clippy suggestions.
 #[allow(clippy::manual_is_multiple_of, clippy::chunks_exact_to_as_chunks)]
@@ -81,10 +89,7 @@ fn run() -> Result<(), String> {
             // Bare names are retained for compatibility with early databases.
             let selected = &params[0];
             if let Some(id) = selected.strip_prefix("pvr:") {
-                let parsed = id.parse::<u32>().map_err(|_| "invalid PVR channel ID")?;
-                if parsed == 0 {
-                    return Err("invalid PVR channel ID".into());
-                }
+                parse_pvr_id(id)?;
             } else {
                 let name = selected.strip_prefix("virtual:").unwrap_or(selected);
                 if !channels
@@ -117,9 +122,7 @@ fn run() -> Result<(), String> {
             println!("{} @ {} ms", play.path, play.position_ms);
         }
         "request-pvr" if params.len() == 1 => {
-            let id = params[0]
-                .parse::<u32>()
-                .map_err(|_| "invalid PVR channel ID")?;
+            let id = parse_pvr_id(&params[0])?;
             println!("{}", kodi::open_pvr_channel(id, 1));
         }
         "request-virtual" if params.len() == 2 => {
@@ -133,9 +136,7 @@ fn run() -> Result<(), String> {
         "resume-last" if params.len() == 1 => {
             if let Some(last) = channels.last_channel().map_err(|e| format!("{e:?}"))? {
                 let request = if let Some(id) = last.strip_prefix("pvr:") {
-                    let id = id
-                        .parse::<u32>()
-                        .map_err(|_| "invalid saved PVR channel ID")?;
+                    let id = parse_pvr_id(id).map_err(|_| "invalid saved PVR channel ID")?;
                     kodi::open_pvr_channel(id, 1)
                 } else {
                     let name = last.strip_prefix("virtual:").unwrap_or(&last);
@@ -152,9 +153,7 @@ fn run() -> Result<(), String> {
             }
         }
         "play-pvr" if params.len() == 1 => {
-            let id = params[0]
-                .parse::<u32>()
-                .map_err(|_| "invalid PVR channel ID")?;
+            let id = parse_pvr_id(&params[0])?;
             let request = kodi::open_pvr_channel(id, 1);
             let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
             channels
@@ -183,5 +182,19 @@ fn main() {
     if let Err(e) = run() {
         eprintln!("{e}");
         std::process::exit(2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_pvr_id;
+
+    #[test]
+    fn pvr_ids_reject_zero_and_invalid_values() {
+        assert_eq!(parse_pvr_id("1"), Ok(1));
+        assert_eq!(parse_pvr_id("4294967295"), Ok(u32::MAX));
+        for invalid in ["0", "-1", "abc", "4294967296", ""] {
+            assert!(parse_pvr_id(invalid).is_err());
+        }
     }
 }
