@@ -110,7 +110,7 @@ impl ChannelPicker {
                     // rather than unexpectedly selecting an unrelated channel.
                     .or_else(|| channels.iter().position(|candidate| candidate == name))
             })
-            .unwrap_or(0);
+            .unwrap_or_else(|| self.selected.min(channels.len().saturating_sub(1)));
         self.channels = channels;
         // An administrator can remove the last channel while the picker is open.
         // Never leave the controller in an unusable empty-list state.
@@ -226,6 +226,20 @@ mod tests {
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::None);
         p.replace_channels(vec!["New".into()]);
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+    }
+
+    #[test]
+    fn removing_selected_channel_keeps_nearest_position() {
+        let mut p = ChannelPicker::new(
+            vec!["First".into(), "Middle".into(), "Last".into()],
+            Some("Middle"),
+        );
+        p.replace_channels(vec!["First".into(), "Last".into()]);
+        assert_eq!(p.selected(), Some("Last"));
+        p.replace_channels(vec!["First".into()]);
+        assert_eq!(p.selected(), Some("First"));
+        p.replace_channels(vec![]);
+        assert_eq!(p.selected(), None);
     }
 
     #[test]
