@@ -86,7 +86,9 @@ impl ChannelPicker {
         }
     }
     /// Refresh channel list after an administrator changes it. Empty lists are safe.
-    pub fn replace_channels(&mut self, channels: Vec<String>) {
+    pub fn replace_channels(&mut self, channels: Vec<String>) -> PickerEvent {
+        let was_open = self.remote.screen() == crate::remote::Screen::ChannelList;
+        let previous_selection = self.selected;
         // Preserve the selected occurrence when display names are duplicated.
         // Matching only the name would silently jump to the first duplicate.
         let current = self.selected().map(str::to_owned);
@@ -116,6 +118,12 @@ impl ChannelPicker {
         // Never leave the controller in an unusable empty-list state.
         if self.channels.is_empty() {
             self.remote = RemoteController::default();
+            return if was_open { PickerEvent::Hide } else { PickerEvent::None };
+        }
+        if was_open && self.selected != previous_selection {
+            PickerEvent::SelectionChanged { selected: self.selected }
+        } else {
+            PickerEvent::None
         }
     }
 }
@@ -215,6 +223,25 @@ mod tests {
         p.replace_channels(vec!["Other".into(), "Same".into()]);
         assert_eq!(p.selected(), Some("Same"));
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+    }
+
+    #[test]
+    fn removing_last_channel_notifies_overlay_to_hide() {
+        let mut p = picker();
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(p.replace_channels(vec![]), PickerEvent::Hide);
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+    }
+
+    #[test]
+    fn reordering_open_picker_notifies_selection_change() {
+        let mut p = picker();
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(
+            p.replace_channels(vec!["Dede Film".into(), "TRT 1".into()]),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
+        assert_eq!(p.selected(), Some("TRT 1"));
     }
 
     #[test]
