@@ -90,6 +90,9 @@ impl ChannelPicker {
                     .filter(|(_, candidate)| candidate.as_str() == name)
                     .nth(nth)
                     .map(|(index, _)| index)
+                    // If an occurrence was removed, keep the same channel name
+                    // rather than unexpectedly selecting an unrelated channel.
+                    .or_else(|| channels.iter().position(|candidate| candidate == name))
             })
             .unwrap_or(0);
         self.channels = channels;
@@ -151,6 +154,18 @@ mod tests {
         );
         p.replace_channels(vec!["Same".into(), "Other".into(), "Same".into()]);
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 2 });
+    }
+
+    #[test]
+    fn replacement_of_removed_duplicate_keeps_matching_channel() {
+        let mut p = ChannelPicker::new(vec!["Same".into(), "Same".into(), "Other".into()], None);
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("Same".into())
+        );
+        p.replace_channels(vec!["Other".into(), "Same".into()]);
+        assert_eq!(p.selected(), Some("Same"));
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
     }
 
     #[test]
