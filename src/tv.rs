@@ -73,7 +73,7 @@ impl TvSession {
                             return Err("PVR channel ID must be positive".into());
                         }
                         kodi::open_pvr_channel(*id, 1)
-                    },
+                    }
                     Source::Virtual => {
                         let playback = db.current(&name, now_ms).map_err(|e| format!("{e:?}"))?;
                         kodi::open_virtual_channel(&playback, &self.roots, 1)
