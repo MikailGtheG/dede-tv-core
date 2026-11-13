@@ -308,7 +308,10 @@ mod tests {
         let db = VirtualChannels::open(":memory:").unwrap();
         let name = "V".repeat(93);
         let mut tv = TvSession::new(vec![(name.clone(), Source::Virtual)], vec![]);
-        assert!(matches!(tv.handle(RemoteKey::Ok, &db, 0).unwrap(), TvEvent::Picker(_)));
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
         assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
         assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
         assert!(tv.confirm_playback(&db, &name).is_err());
