@@ -170,7 +170,12 @@ impl VirtualChannels {
             .optional()?;
         let (payload, start_ms, seed) = row.ok_or(ScheduleError::NotFound)?;
         let videos: Vec<Video> = serde_json::from_str(&payload)?;
-        if videos.is_empty() || start_ms < 0 || seed < 0 || now_ms > i64::MAX as u64 {
+        if videos.is_empty()
+            || videos.iter().any(|video| video.duration_ms == 0)
+            || start_ms < 0
+            || seed < 0
+            || now_ms > i64::MAX as u64
+        {
             return Err(ScheduleError::InvalidPlaylist);
         }
         let total = videos
@@ -353,6 +358,28 @@ mod tests {
         drop(s);
         let s = VirtualChannels::open(&db).unwrap();
         assert_eq!(s.list_channels().unwrap(), vec!["ZDF"]);
+    }
+
+    #[test]
+    fn corrupted_zero_duration_media_is_rejected_before_scheduling() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
+        // Simulate a damaged or externally modified database row. The
+        // scheduler must not treat a zero-length entry as playable media.
+        let corrupted = serde_json::to_string(&vec![
+            v("zero.mp4", 0),
+            v("valid.mp4", 1000),
+        ])
+        .unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist=?1 WHERE name='Movies'",
+            [corrupted],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
     }
 
     #[test]
