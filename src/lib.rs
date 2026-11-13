@@ -72,7 +72,7 @@ impl VirtualChannels {
     /// Persist the selected live channel so startup can resume it.
     /// Values are logical channel identifiers; never use them as filesystem paths.
     pub fn set_last_channel(&self, channel: &str) -> Result<()> {
-        if channel.is_empty() || channel.len() > 100 || channel.chars().any(char::is_control) {
+        if channel.trim().is_empty() || channel.len() > 100 || channel.chars().any(char::is_control) {
             return Err(ScheduleError::InvalidChannel);
         }
         self.db.execute(
@@ -269,6 +269,11 @@ mod tests {
             s.set_last_channel("bad\nname"),
             Err(ScheduleError::InvalidChannel)
         ));
+        assert!(matches!(
+            s.set_last_channel("   "),
+            Err(ScheduleError::InvalidChannel)
+        ));
+        assert_eq!(s.last_channel().unwrap().as_deref(), Some("TRT 1"));
     }
 
     #[test]
