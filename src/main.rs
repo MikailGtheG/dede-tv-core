@@ -42,6 +42,9 @@ fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
 
 // Zero-length videos cannot advance a deterministic playlist.
 fn parse_duration_ms(raw: &str) -> Result<u64, &'static str> {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("duration must be a positive integer in milliseconds");
+    }
     match raw.parse::<u64>() {
         Ok(ms) if ms > 0 => Ok(ms),
         _ => Err("duration must be a positive integer in milliseconds"),
@@ -204,7 +207,7 @@ mod tests {
     fn video_durations_must_be_positive() {
         assert_eq!(parse_duration_ms("1"), Ok(1));
         assert_eq!(parse_duration_ms("18446744073709551615"), Ok(u64::MAX));
-        for invalid in ["0", "-1", "abc", "18446744073709551616", ""] {
+        for invalid in ["0", "-1", "+1", " 1", "1 ", "abc", "18446744073709551616", ""] {
             assert!(parse_duration_ms(invalid).is_err());
         }
     }
