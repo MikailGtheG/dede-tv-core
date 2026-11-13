@@ -44,6 +44,7 @@ impl ChannelPicker {
         {
             return PickerEvent::None;
         }
+        let was_open = self.remote.screen() == crate::remote::Screen::ChannelList;
         match self.remote.handle(key) {
             Action::ShowChannels => PickerEvent::Show {
                 selected: self.selected,
@@ -73,7 +74,13 @@ impl ChannelPicker {
                 let len = self.channels.len();
                 // With one channel, channel +/- must not restart playback.
                 if len == 1 {
-                    return PickerEvent::None;
+                    // The remote controller already closed the overlay.
+                    // Hide it without restarting playback of the only channel.
+                    return if was_open {
+                        PickerEvent::Hide
+                    } else {
+                        PickerEvent::None
+                    };
                 }
                 if delta < 0 {
                     self.selected = (self.selected + len - 1) % len;
@@ -208,6 +215,17 @@ mod tests {
         assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::None);
         assert_eq!(p.selected(), Some("TRT 1"));
         assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+    }
+
+    #[test]
+    fn single_channel_step_closes_open_overlay_without_restarting_playback() {
+        for key in [RemoteKey::ChannelUp, RemoteKey::ChannelDown] {
+            let mut p = ChannelPicker::new(vec!["TRT 1".into()], None);
+            assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+            assert_eq!(p.handle(key), PickerEvent::Hide);
+            assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+            assert_eq!(p.selected(), Some("TRT 1"));
+        }
     }
 
     #[test]
