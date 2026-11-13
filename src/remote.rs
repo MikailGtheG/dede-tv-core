@@ -67,7 +67,7 @@ impl RemoteController {
             (S::ChannelList, K::ChannelDown) => {
                 self.screen = S::LiveTv;
                 A::StepChannel(-1)
-            },
+            }
             (S::LiveTv, K::Up | K::Down | K::Back | K::Home | K::Menu | K::Unknown)
             | (S::ChannelList, K::Menu | K::Unknown) => A::None,
         }
