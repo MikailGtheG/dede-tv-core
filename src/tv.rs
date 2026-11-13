@@ -90,7 +90,9 @@ impl TvSession {
                 }
                 if name.trim().is_empty() || name.chars().any(char::is_control) {
                     self.picker = previous_picker;
-                    return Err("channel name must not be blank or contain control characters".into());
+                    return Err(
+                        "channel name must not be blank or contain control characters".into(),
+                    );
                 }
                 let request = match source {
                     Source::Pvr(id) => {
@@ -281,7 +283,7 @@ mod tests {
     #[test]
     fn control_characters_in_channel_names_cannot_tune_or_persist() {
         let db = VirtualChannels::open(":memory:").unwrap();
-        for name in ["TRT\\n1", "TRT\\r1", "TRT\\t1", "TRT\\u{0000}1"] {
+        for name in ["TRT\n1", "TRT\r1", "TRT\t1", "TRT\u{0000}1"] {
             let mut tv = TvSession::new(vec![(name.into(), Source::Pvr(17))], vec![]);
             assert!(matches!(
                 tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
