@@ -170,8 +170,21 @@ impl VirtualChannels {
             .optional()?;
         let (payload, start_ms, seed) = row.ok_or(ScheduleError::NotFound)?;
         let videos: Vec<Video> = serde_json::from_str(&payload)?;
+        // Revalidate persisted playlists: SQLite can be edited externally.
+        // Duplicate paths can violate shuffle_cycle's uniqueness invariant.
         if videos.is_empty()
-            || videos.iter().any(|video| video.duration_ms == 0)
+            || videos.len() > crate::media::MAX_MEDIA_FILES
+            || videos.iter().any(|video| {
+                video.path.is_empty()
+                    || video.path.len() > 4096
+                    || video.duration_ms == 0
+            })
+            || videos
+                .iter()
+                .map(|video| &video.path)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != videos.len()
             || start_ms < 0
             || seed < 0
             || now_ms > i64::MAX as u64
@@ -375,6 +388,28 @@ mod tests {
         .unwrap();
         assert!(matches!(
             s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+    }
+
+    #[test]
+    fn corrupted_duplicate_media_paths_are_rejected_before_shuffle() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("Movies", &[v("a.mp4", 100), v("b.mp4", 100), v("c.mp4", 100)], 0)
+            .unwrap();
+        let corrupted = serde_json::to_string(&vec![
+            v("same.mp4", 100),
+            v("same.mp4", 100),
+            v("other.mp4", 100),
+        ])
+        .unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist=?1 WHERE name='Movies'",
+            [corrupted],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("Movies", 300),
             Err(ScheduleError::InvalidPlaylist)
         ));
     }
