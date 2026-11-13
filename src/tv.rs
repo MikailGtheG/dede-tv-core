@@ -318,6 +318,30 @@ mod tests {
         assert_eq!(db.last_channel().unwrap(), None);
     }
     #[test]
+    fn channel_buttons_request_playback_without_persisting_before_ack() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("TRT 1".into(), Source::Pvr(17)),
+                ("ATV".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        match tv.handle(RemoteKey::ChannelUp, &db, 0).unwrap() {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, "ATV");
+                assert_eq!(request["method"], "Player.Open");
+                assert_eq!(request["params"]["item"]["channelid"], 18);
+            }
+            _ => panic!("expected channel-up playback"),
+        }
+        assert_eq!(db.last_channel().unwrap(), None);
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::LiveTv);
+        tv.confirm_playback(&db, "ATV").unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
+    }
+
+    #[test]
     fn empty_channel_list_is_safe() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(vec![], vec![]);
