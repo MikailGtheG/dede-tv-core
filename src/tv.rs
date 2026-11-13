@@ -53,8 +53,8 @@ impl TvSession {
         if matches.next().is_some() {
             return Err("ambiguous channel name".into());
         }
-        if name.trim().is_empty() {
-            return Err("channel name must not be blank".into());
+        if name.trim().is_empty() || name.chars().any(char::is_control) {
+            return Err("channel name must not be blank or contain control characters".into());
         }
         let key = match source {
             Source::Pvr(0) => return Err("PVR channel ID must be positive".into()),
@@ -88,9 +88,9 @@ impl TvSession {
                     self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
                 }
-                if name.trim().is_empty() {
+                if name.trim().is_empty() || name.chars().any(char::is_control) {
                     self.picker = previous_picker;
-                    return Err("channel name must not be blank".into());
+                    return Err("channel name must not be blank or contain control characters".into());
                 }
                 let request = match source {
                     Source::Pvr(id) => {
@@ -276,6 +276,22 @@ mod tests {
         assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
         assert!(tv.confirm_playback(&db, "   ").is_err());
         assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
+    fn control_characters_in_channel_names_cannot_tune_or_persist() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        for name in ["TRT\\n1", "TRT\\r1", "TRT\\t1", "TRT\\u{0000}1"] {
+            let mut tv = TvSession::new(vec![(name.into(), Source::Pvr(17))], vec![]);
+            assert!(matches!(
+                tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+                TvEvent::Picker(_)
+            ));
+            assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+            assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
+            assert!(tv.confirm_playback(&db, name).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
     }
 
     #[test]
