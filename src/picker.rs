@@ -211,6 +211,23 @@ mod tests {
     }
 
     #[test]
+    fn channel_buttons_from_open_picker_tune_and_close_overlay() {
+        let mut p = picker();
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("Dede Film".into())
+        );
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+        assert_eq!(
+            p.handle(RemoteKey::ChannelDown),
+            PickerEvent::Tune("TRT 1".into())
+        );
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+    }
+
+    #[test]
     fn empty_channel_step_does_not_change_live_tv_screen() {
         let mut p = ChannelPicker::new(vec![], None);
         assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::None);
