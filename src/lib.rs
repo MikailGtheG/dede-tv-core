@@ -366,11 +366,8 @@ mod tests {
         s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
         // Simulate a damaged or externally modified database row. The
         // scheduler must not treat a zero-length entry as playable media.
-        let corrupted = serde_json::to_string(&vec![
-            v("zero.mp4", 0),
-            v("valid.mp4", 1000),
-        ])
-        .unwrap();
+        let corrupted =
+            serde_json::to_string(&vec![v("zero.mp4", 0), v("valid.mp4", 1000)]).unwrap();
         s.db.execute(
             "UPDATE channels SET playlist=?1 WHERE name='Movies'",
             [corrupted],
