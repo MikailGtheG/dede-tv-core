@@ -32,6 +32,15 @@ impl TvSession {
             roots,
         }
     }
+    /// Replace the administrator-managed channel catalog atomically with the
+    /// picker entries. Updating the picker alone would leave stale playback
+    /// sources behind after channels are removed or reordered.
+    pub fn replace_channels(&mut self, channels: Vec<(String, Source)>) -> PickerEvent {
+        let names = channels.iter().map(|(name, _)| name.clone()).collect();
+        self.channels = channels;
+        self.picker.replace_channels(names)
+    }
+
     /// Record a channel only after Kodi acknowledges a successful Player.Open.
     /// Pass the channel identifier returned in TvEvent::Playback, not the
     /// current picker selection: the user may have navigated elsewhere while
@@ -199,6 +208,30 @@ mod tests {
         assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
         assert!(tv.confirm_playback(&db, "Invalid").is_err());
         assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
+    fn replacing_catalog_updates_playback_sources_and_picker_together() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(PickerEvent::Show { selected: 0 })
+        ));
+        assert!(matches!(
+            tv.replace_channels(vec![("ATV".into(), Source::Pvr(18))]),
+            PickerEvent::SelectionChanged { selected: 0 }
+        ));
+        match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, "ATV");
+                assert_eq!(request["params"]["item"]["channelid"], 18);
+            }
+            _ => panic!("expected playback from refreshed catalog"),
+        }
+        assert!(tv.confirm_playback(&db, "TRT 1").is_err());
+        tv.confirm_playback(&db, "ATV").unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
     }
 
     #[test]
