@@ -175,9 +175,7 @@ impl VirtualChannels {
         if videos.is_empty()
             || videos.len() > crate::media::MAX_MEDIA_FILES
             || videos.iter().any(|video| {
-                video.path.is_empty()
-                    || video.path.len() > 4096
-                    || video.duration_ms == 0
+                video.path.is_empty() || video.path.len() > 4096 || video.duration_ms == 0
             })
             || videos
                 .iter()
@@ -395,8 +393,12 @@ mod tests {
     #[test]
     fn corrupted_duplicate_media_paths_are_rejected_before_shuffle() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
-        s.set_channel("Movies", &[v("a.mp4", 100), v("b.mp4", 100), v("c.mp4", 100)], 0)
-            .unwrap();
+        s.set_channel(
+            "Movies",
+            &[v("a.mp4", 100), v("b.mp4", 100), v("c.mp4", 100)],
+            0,
+        )
+        .unwrap();
         let corrupted = serde_json::to_string(&vec![
             v("same.mp4", 100),
             v("same.mp4", 100),
