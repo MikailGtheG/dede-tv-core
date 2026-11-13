@@ -67,26 +67,47 @@ impl TvSession {
         db: &VirtualChannels,
         now_ms: u64,
     ) -> Result<TvEvent, String> {
+        // Keep the picker usable when an invalid source cannot be tuned.
+        let previous_picker = self.picker.clone();
         match self.picker.handle(key) {
             PickerEvent::Tune(name) => {
                 // The picker currently identifies channels by display name.
                 // Never tune an arbitrary source when names are duplicated.
                 let mut matches = self.channels.iter().filter(|(n, _)| *n == name);
-                let (_, source) = matches.next().ok_or("channel not found")?;
+                let (_, source) = match matches.next() {
+                    Some(channel) => channel,
+                    None => {
+                        self.picker = previous_picker;
+                        return Err("channel not found".into());
+                    }
+                };
                 if matches.next().is_some() {
+                    self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
                 }
                 let request = match source {
                     Source::Pvr(id) => {
                         if *id == 0 {
+                            self.picker = previous_picker;
                             return Err("PVR channel ID must be positive".into());
                         }
                         kodi::open_pvr_channel(*id, 1)
                     }
                     Source::Virtual => {
-                        let playback = db.current(&name, now_ms).map_err(|e| format!("{e:?}"))?;
-                        kodi::open_virtual_channel(&playback, &self.roots, 1)
-                            .map_err(|e| format!("{e:?}"))?
+                        let playback = match db.current(&name, now_ms) {
+                            Ok(playback) => playback,
+                            Err(error) => {
+                                self.picker = previous_picker;
+                                return Err(format!("{error:?}"));
+                            }
+                        };
+                        match kodi::open_virtual_channel(&playback, &self.roots, 1) {
+                            Ok(request) => request,
+                            Err(error) => {
+                                self.picker = previous_picker;
+                                return Err(format!("{error:?}"));
+                            }
+                        }
                     }
                 };
                 // Building a request is not evidence that Kodi started playback.
@@ -194,6 +215,7 @@ mod tests {
             TvEvent::Picker(_)
         ));
         assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
         assert_eq!(db.last_channel().unwrap(), None);
     }
 
@@ -206,6 +228,7 @@ mod tests {
             TvEvent::Picker(_)
         ));
         assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
         assert!(tv.confirm_playback(&db, "Invalid").is_err());
         assert_eq!(db.last_channel().unwrap(), None);
     }
