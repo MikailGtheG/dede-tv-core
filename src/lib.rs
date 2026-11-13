@@ -97,7 +97,9 @@ impl VirtualChannels {
     }
 
     pub fn set_channel(&mut self, name: &str, videos: &[Video], now_ms: u64) -> Result<()> {
-        if name.is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
+        // Reserve space for the `virtual:` resume prefix in settings (100 bytes).
+        // A channel that cannot be resumed must not be accepted for creation.
+        if name.trim().is_empty() || name.len() > 92 || name.chars().any(char::is_control) {
             return Err(ScheduleError::InvalidChannel);
         }
         if videos.is_empty()
@@ -312,6 +314,16 @@ mod tests {
             s.set_channel("", &[v("a", 100)], 0),
             Err(ScheduleError::InvalidChannel)
         ));
+        for invalid in ["   ", "bad\nname", &"x".repeat(93)] {
+            assert!(matches!(
+                s.set_channel(invalid, &[v("a", 100)], 0),
+                Err(ScheduleError::InvalidChannel)
+            ));
+        }
+        // Every accepted name must fit its persisted resume identity.
+        let longest = "x".repeat(92);
+        s.set_channel(&longest, &[v("a", 100)], 0).unwrap();
+        s.set_last_channel(&format!("virtual:{longest}")).unwrap();
         assert!(matches!(
             s.set_channel("A", &[], 0),
             Err(ScheduleError::InvalidPlaylist)
