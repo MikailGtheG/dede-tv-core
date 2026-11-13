@@ -60,8 +60,16 @@ impl RemoteController {
             (S::ChannelList, K::Down) => A::MoveSelection(1),
             (S::LiveTv, K::ChannelUp) => A::StepChannel(1),
             (S::LiveTv, K::ChannelDown) => A::StepChannel(-1),
+            (S::ChannelList, K::ChannelUp) => {
+                self.screen = S::LiveTv;
+                A::StepChannel(1)
+            }
+            (S::ChannelList, K::ChannelDown) => {
+                self.screen = S::LiveTv;
+                A::StepChannel(-1)
+            },
             (S::LiveTv, K::Up | K::Down | K::Back | K::Home | K::Menu | K::Unknown)
-            | (S::ChannelList, K::Menu | K::Unknown | K::ChannelUp | K::ChannelDown) => A::None,
+            | (S::ChannelList, K::Menu | K::Unknown) => A::None,
         }
     }
 }
@@ -106,6 +114,18 @@ mod tests {
                 action,
                 Action::None | Action::ShowChannels | Action::StepChannel(_)
             ));
+        }
+    }
+    #[test]
+    fn channel_buttons_close_overlay_and_step_channel() {
+        for (key, expected) in [
+            (RemoteKey::ChannelUp, Action::StepChannel(1)),
+            (RemoteKey::ChannelDown, Action::StepChannel(-1)),
+        ] {
+            let mut controller = RemoteController::default();
+            assert_eq!(controller.handle(RemoteKey::Ok), Action::ShowChannels);
+            assert_eq!(controller.handle(key), expected);
+            assert_eq!(controller.screen(), Screen::LiveTv);
         }
     }
     #[test]
