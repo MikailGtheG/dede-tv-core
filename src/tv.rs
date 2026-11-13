@@ -67,7 +67,12 @@ impl TvSession {
                     return Err("ambiguous channel name".into());
                 }
                 let request = match source {
-                    Source::Pvr(id) => kodi::open_pvr_channel(*id, 1),
+                    Source::Pvr(id) => {
+                        if *id == 0 {
+                            return Err("PVR channel ID must be positive".into());
+                        }
+                        kodi::open_pvr_channel(*id, 1)
+                    },
                     Source::Virtual => {
                         let playback = db.current(&name, now_ms).map_err(|e| format!("{e:?}"))?;
                         kodi::open_virtual_channel(&playback, &self.roots, 1)
@@ -174,6 +179,18 @@ mod tests {
             ],
             vec![],
         );
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
+    fn invalid_pvr_channel_id_never_generates_playback_request() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("Invalid".into(), Source::Pvr(0))], vec![]);
         assert!(matches!(
             tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
             TvEvent::Picker(_)
