@@ -45,6 +45,7 @@ impl TvSession {
             return Err("ambiguous channel name".into());
         }
         let key = match source {
+            Source::Pvr(0) => return Err("PVR channel ID must be positive".into()),
             Source::Pvr(id) => format!("pvr:{id}"),
             Source::Virtual => format!("virtual:{name}"),
         };
@@ -196,6 +197,7 @@ mod tests {
             TvEvent::Picker(_)
         ));
         assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert!(tv.confirm_playback(&db, "Invalid").is_err());
         assert_eq!(db.last_channel().unwrap(), None);
     }
 
