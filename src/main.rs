@@ -207,7 +207,16 @@ mod tests {
     fn video_durations_must_be_positive() {
         assert_eq!(parse_duration_ms("1"), Ok(1));
         assert_eq!(parse_duration_ms("18446744073709551615"), Ok(u64::MAX));
-        for invalid in ["0", "-1", "+1", " 1", "1 ", "abc", "18446744073709551616", ""] {
+        for invalid in [
+            "0",
+            "-1",
+            "+1",
+            " 1",
+            "1 ",
+            "abc",
+            "18446744073709551616",
+            "",
+        ] {
             assert!(parse_duration_ms(invalid).is_err());
         }
     }
