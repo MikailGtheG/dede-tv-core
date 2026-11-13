@@ -342,6 +342,34 @@ mod tests {
     }
 
     #[test]
+    fn channel_down_from_picker_returns_to_live_tv_without_early_persistence() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("TRT 1".into(), Source::Pvr(17)),
+                ("ATV".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(PickerEvent::Show { selected: 0 })
+        ));
+        match tv.handle(RemoteKey::ChannelDown, &db, 0).unwrap() {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, "ATV");
+                assert_eq!(request["method"], "Player.Open");
+                assert_eq!(request["params"]["item"]["channelid"], 18);
+            }
+            _ => panic!("expected channel-down playback"),
+        }
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(db.last_channel().unwrap(), None);
+        tv.confirm_playback(&db, "ATV").unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
+    }
+
+    #[test]
     fn empty_channel_list_is_safe() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(vec![], vec![]);
