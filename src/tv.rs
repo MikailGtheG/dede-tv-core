@@ -53,6 +53,9 @@ impl TvSession {
         if matches.next().is_some() {
             return Err("ambiguous channel name".into());
         }
+        if name.trim().is_empty() {
+            return Err("channel name must not be blank".into());
+        }
         let key = match source {
             Source::Pvr(0) => return Err("PVR channel ID must be positive".into()),
             Source::Pvr(id) => format!("pvr:{id}"),
@@ -84,6 +87,10 @@ impl TvSession {
                 if matches.next().is_some() {
                     self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
+                }
+                if name.trim().is_empty() {
+                    self.picker = previous_picker;
+                    return Err("channel name must not be blank".into());
                 }
                 let request = match source {
                     Source::Pvr(id) => {
@@ -255,6 +262,20 @@ mod tests {
         assert!(tv.confirm_playback(&db, "TRT 1").is_err());
         tv.confirm_playback(&db, "ATV").unwrap();
         assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
+    }
+
+    #[test]
+    fn blank_channel_name_cannot_tune_or_persist() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("   ".into(), Source::Pvr(17))], vec![]);
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
+        assert!(tv.confirm_playback(&db, "   ").is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
     }
 
     #[test]
