@@ -186,7 +186,7 @@ mod tests {
     fn non_utf8_media_path_is_rejected_without_lossy_substitution() {
         use std::os::unix::ffi::OsStringExt;
         let dir = tempdir().unwrap();
-        let filename = std::ffi::OsString::from_vec(b"episode-\\xff.mkv".to_vec());
+        let filename = std::ffi::OsString::from_vec(b"episode-\xff.mkv".to_vec());
         let movie = dir.path().join(filename);
         fs::write(&movie, b"placeholder").unwrap();
         let alias = dir.path().join("alias.mkv");
