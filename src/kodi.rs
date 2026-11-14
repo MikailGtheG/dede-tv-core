@@ -172,6 +172,26 @@ mod tests {
     }
 
     #[test]
+    fn rejects_sibling_directory_with_shared_root_prefix() {
+        let parent = tempdir().unwrap();
+        let approved = parent.path().join("movies");
+        let sibling = parent.path().join("movies-private");
+        fs::create_dir(&approved).unwrap();
+        fs::create_dir(&sibling).unwrap();
+        let private_video = sibling.join("private.mkv");
+        fs::write(&private_video, b"video").unwrap();
+        let item = Playback {
+            path: private_video.to_str().unwrap().to_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        assert!(matches!(
+            open_virtual_channel(&item, &[approved], 1),
+            Err(KodiError::OutsideApprovedMediaRoot)
+        ));
+    }
+
+    #[test]
     fn refuses_video_truncated_after_media_discovery() {
         let dir = tempdir().unwrap();
         let movie = dir.path().join("episode.mkv");
