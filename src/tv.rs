@@ -376,6 +376,37 @@ mod tests {
         assert_eq!(db.last_channel().unwrap(), None);
     }
     #[test]
+    fn virtual_channel_utf8_name_respects_resumable_byte_boundary() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        // The persisted key includes the eight-byte "virtual:" prefix.
+        // 46 two-byte characters fit exactly; 47 exceed the 100-byte key limit.
+        let accepted = "é".repeat(46);
+        let rejected = "é".repeat(47);
+        assert_eq!(accepted.len(), 92);
+        assert_eq!(rejected.len(), 94);
+
+        let accepted_tv = TvSession::new(
+            vec![(accepted.clone(), Source::Virtual)],
+            vec![],
+        );
+        accepted_tv.confirm_playback(&db, &accepted).unwrap();
+        assert_eq!(
+            db.last_channel().unwrap().as_deref(),
+            Some(format!("virtual:{accepted}").as_str())
+        );
+
+        let rejected_tv = TvSession::new(
+            vec![(rejected.clone(), Source::Virtual)],
+            vec![],
+        );
+        assert!(rejected_tv.confirm_playback(&db, &rejected).is_err());
+        assert_eq!(
+            db.last_channel().unwrap().as_deref(),
+            Some(format!("virtual:{accepted}").as_str())
+        );
+    }
+
+    #[test]
     fn channel_buttons_request_playback_without_persisting_before_ack() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(
