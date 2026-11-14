@@ -53,7 +53,7 @@ impl TvSession {
         if matches.next().is_some() {
             return Err("ambiguous channel name".into());
         }
-        if name.trim().is_empty() || name.chars().any(char::is_control) {
+        if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
             return Err("channel name must not be blank or contain control characters".into());
         }
         if matches!(source, Source::Virtual) && name.len() > 92 {
@@ -91,7 +91,7 @@ impl TvSession {
                     self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
                 }
-                if name.trim().is_empty() || name.chars().any(char::is_control) {
+                if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
                     self.picker = previous_picker;
                     return Err(
                         "channel name must not be blank or contain control characters".into(),
@@ -301,6 +301,21 @@ mod tests {
             assert!(tv.confirm_playback(&db, name).is_err());
             assert_eq!(db.last_channel().unwrap(), None);
         }
+    }
+
+    #[test]
+    fn oversized_pvr_channel_name_is_rejected_before_kodi_request() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let name = "P".repeat(101);
+        let mut tv = TvSession::new(vec![(name.clone(), Source::Pvr(17))], vec![]);
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
+        assert!(tv.confirm_playback(&db, &name).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
     }
 
     #[test]
