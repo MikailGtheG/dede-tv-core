@@ -21,6 +21,14 @@ pub fn has_video_extension(path: &Path) -> bool {
 /// are excluded; a file-count cap avoids building unbounded playlists.
 pub fn discover_media(directory: &Path) -> io::Result<Vec<PathBuf>> {
     let dir = fs::canonicalize(directory)?;
+    // Reject unrepresentable roots rather than silently returning an empty
+    // catalog: Kodi JSON-RPC cannot address files below such a path.
+    if dir.to_str().is_none() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "media root is not valid UTF-8",
+        ));
+    }
     if !dir.is_dir() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -95,6 +103,21 @@ mod tests {
         let found = discover_media(dir.path()).unwrap();
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].file_name().unwrap(), "valid.mkv");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_utf8_media_root_instead_of_silent_empty_catalog() {
+        use std::os::unix::ffi::OsStringExt;
+        let parent = tempdir().unwrap();
+        let invalid = std::ffi::OsString::from_vec(b"root-\xff".to_vec());
+        let root = parent.path().join(invalid);
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("video.mkv"), b"v").unwrap();
+        assert_eq!(
+            discover_media(&root).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]
