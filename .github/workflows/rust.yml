@@ -29,7 +29,8 @@ jobs:
           set -euo pipefail
           directory="$(mktemp -d)"
           trap 'rm -rf "$directory"' EXIT
-          touch "$directory/film.mkv"
+          # Playback rejects zero-byte media; use a nonempty fixture for the CLI smoke test.
+          printf "sample video fixture" > "$directory/film.mkv"
           cargo run --locked --quiet -- --db "$directory/state.db" add "Dede Film" "$directory/film.mkv" 3600000
           test "$(cargo run --locked --quiet -- --db "$directory/state.db" list)" = "Dede Film"
           cargo run --locked --quiet -- --db "$directory/state.db" select "Dede Film"
