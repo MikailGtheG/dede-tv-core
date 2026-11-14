@@ -320,6 +320,25 @@ mod tests {
     }
 
     #[test]
+    fn multibyte_pvr_name_over_byte_limit_is_rejected_before_kodi_request() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        // 51 two-byte characters are 102 UTF-8 bytes, despite being
+        // fewer than the 100-character persistence limit.
+        let name = "é".repeat(51);
+        assert_eq!(name.chars().count(), 51);
+        assert_eq!(name.len(), 102);
+        let mut tv = TvSession::new(vec![(name.clone(), Source::Pvr(17))], vec![]);
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
+        assert!(tv.confirm_playback(&db, &name).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
     fn oversized_virtual_channel_name_cannot_tune_or_persist() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let name = "V".repeat(93);
