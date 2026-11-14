@@ -10,6 +10,7 @@ pub enum KodiError {
     NoApprovedMediaRoot,
     OutsideApprovedMediaRoot,
     InvalidMediaPath(std::io::Error),
+    NonUtf8MediaPath,
 }
 
 fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiError> {
@@ -34,6 +35,11 @@ fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiErr
     });
     if !is_allowed {
         return Err(KodiError::OutsideApprovedMediaRoot);
+    }
+    // JSON-RPC file paths must round-trip exactly. Lossy UTF-8 conversion
+    // could silently select a different filename on Unix filesystems.
+    if canonical.to_str().is_none() {
+        return Err(KodiError::NonUtf8MediaPath);
     }
     Ok(canonical)
 }
@@ -60,7 +66,7 @@ pub fn open_virtual_channel(
         "jsonrpc": "2.0",
         "method": "Player.Open",
         "params": {
-            "item": { "file": file.to_string_lossy() },
+            "item": { "file": file.to_str().expect("approved path is UTF-8") },
             "options": { "resume": resume }
         },
         "id": request_id
@@ -173,6 +179,24 @@ mod tests {
             request["params"]["item"]["file"],
             episode.to_string_lossy().as_ref()
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_media_path_is_rejected_without_lossy_substitution() {
+        use std::os::unix::ffi::OsStringExt;
+        let dir = tempdir().unwrap();
+        let filename = std::ffi::OsString::from_vec(b"episode-\\xff.mkv".to_vec());
+        let movie = dir.path().join(filename);
+        fs::write(&movie, b"placeholder").unwrap();
+        let item = Playback {
+            path: movie.to_string_lossy().into_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        // Playback stores a String, so a lossy representation must not
+        // accidentally resolve to a different file under the approved root.
+        assert!(open_virtual_channel(&item, &[dir.path().to_path_buf()], 1).is_err());
     }
 
     #[test]
