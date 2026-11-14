@@ -250,6 +250,24 @@ mod tests {
         ));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn symlink_to_video_within_approved_root_remains_playable() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("episode.mkv");
+        fs::write(&target, b"video").unwrap();
+        let alias = dir.path().join("current.mkv");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let item = Playback {
+            path: alias.to_str().unwrap().to_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        let request = open_virtual_channel(&item, &[dir.path().to_path_buf()], 9).unwrap();
+        assert_eq!(request["method"], "Player.Open");
+        assert_eq!(request["params"]["item"]["file"], target.to_str().unwrap());
+    }
+
     #[test]
     fn no_root_fails_closed() {
         let item = Playback {
