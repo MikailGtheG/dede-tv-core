@@ -189,14 +189,19 @@ mod tests {
         let filename = std::ffi::OsString::from_vec(b"episode-\\xff.mkv".to_vec());
         let movie = dir.path().join(filename);
         fs::write(&movie, b"placeholder").unwrap();
+        let alias = dir.path().join("alias.mkv");
+        std::os::unix::fs::symlink(&movie, &alias).unwrap();
         let item = Playback {
-            path: movie.to_string_lossy().into_owned(),
+            path: alias.to_str().unwrap().to_owned(),
             position_ms: 0,
             next_transition_ms: 0,
         };
-        // Playback stores a String, so a lossy representation must not
-        // accidentally resolve to a different file under the approved root.
-        assert!(open_virtual_channel(&item, &[dir.path().to_path_buf()], 1).is_err());
+        // The input is valid UTF-8, but canonicalization resolves the
+        // symlink to a non-UTF8 filename. Never serialize it lossily.
+        assert!(matches!(
+            open_virtual_channel(&item, &[dir.path().to_path_buf()], 1),
+            Err(KodiError::NonUtf8MediaPath)
+        ));
     }
 
     #[test]
