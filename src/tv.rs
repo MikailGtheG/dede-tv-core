@@ -92,9 +92,7 @@ impl TvSession {
             return Err("ambiguous channel name".into());
         }
         match source {
-            Source::Pvr(id) if u64::from(*id) == requested_id => {
-                self.confirm_playback(db, name)
-            }
+            Source::Pvr(id) if u64::from(*id) == requested_id => self.confirm_playback(db, name),
             _ => Err("channel catalog changed since playback request".into()),
         }
     }
