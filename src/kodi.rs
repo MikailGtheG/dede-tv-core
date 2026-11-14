@@ -157,6 +157,22 @@ mod tests {
     }
 
     #[test]
+    fn nested_media_inside_approved_root_is_playable() {
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("series").join("season-1");
+        fs::create_dir_all(&nested).unwrap();
+        let episode = nested.join("episode.mkv");
+        fs::write(&episode, b"placeholder").unwrap();
+        let item = Playback {
+            path: episode.to_string_lossy().into_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        let request = open_virtual_channel(&item, &[dir.path().to_path_buf()], 7).unwrap();
+        assert_eq!(request["params"]["item"]["file"], episode.to_string_lossy().as_ref());
+    }
+
+    #[test]
     fn no_root_fails_closed() {
         let item = Playback {
             path: "/tmp/a.mkv".to_string(),
