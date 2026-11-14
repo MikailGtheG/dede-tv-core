@@ -339,6 +339,29 @@ mod tests {
     }
 
     #[test]
+    fn pvr_channel_name_at_exact_byte_limit_remains_playable() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        // Fifty two-byte UTF-8 characters are exactly 100 bytes.
+        let name = "é".repeat(50);
+        assert_eq!(name.len(), 100);
+        let mut tv = TvSession::new(vec![(name.clone(), Source::Pvr(17))], vec![]);
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(_)
+        ));
+        match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, name);
+                assert_eq!(request["params"]["item"]["channelid"], 17);
+            }
+            _ => panic!("expected playback at the accepted byte boundary"),
+        }
+        assert_eq!(db.last_channel().unwrap(), None);
+        tv.confirm_playback(&db, &name).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
     fn oversized_virtual_channel_name_cannot_tune_or_persist() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let name = "V".repeat(93);
