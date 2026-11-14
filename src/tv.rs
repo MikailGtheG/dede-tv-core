@@ -91,7 +91,8 @@ impl TvSession {
                     self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
                 }
-                if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
+                if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control)
+                {
                     self.picker = previous_picker;
                     return Err(
                         "channel name must not be blank or contain control characters".into(),
