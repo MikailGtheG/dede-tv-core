@@ -385,20 +385,14 @@ mod tests {
         assert_eq!(accepted.len(), 92);
         assert_eq!(rejected.len(), 94);
 
-        let accepted_tv = TvSession::new(
-            vec![(accepted.clone(), Source::Virtual)],
-            vec![],
-        );
+        let accepted_tv = TvSession::new(vec![(accepted.clone(), Source::Virtual)], vec![]);
         accepted_tv.confirm_playback(&db, &accepted).unwrap();
         assert_eq!(
             db.last_channel().unwrap().as_deref(),
             Some(format!("virtual:{accepted}").as_str())
         );
 
-        let rejected_tv = TvSession::new(
-            vec![(rejected.clone(), Source::Virtual)],
-            vec![],
-        );
+        let rejected_tv = TvSession::new(vec![(rejected.clone(), Source::Virtual)], vec![]);
         assert!(rejected_tv.confirm_playback(&db, &rejected).is_err());
         assert_eq!(
             db.last_channel().unwrap().as_deref(),
