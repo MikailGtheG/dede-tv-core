@@ -169,7 +169,10 @@ mod tests {
             next_transition_ms: 0,
         };
         let request = open_virtual_channel(&item, &[dir.path().to_path_buf()], 7).unwrap();
-        assert_eq!(request["params"]["item"]["file"], episode.to_string_lossy().as_ref());
+        assert_eq!(
+            request["params"]["item"]["file"],
+            episode.to_string_lossy().as_ref()
+        );
     }
 
     #[test]
