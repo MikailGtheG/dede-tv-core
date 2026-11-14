@@ -28,6 +28,14 @@ fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiErr
     if !crate::media::has_video_extension(&canonical) {
         return Err(KodiError::OutsideApprovedMediaRoot);
     }
+    let is_allowed = roots.iter().any(|root| {
+        fs::canonicalize(root)
+            .map(|safe_root| canonical.starts_with(&safe_root) && canonical != safe_root)
+            .unwrap_or(false)
+    });
+    if !is_allowed {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
     // A stale catalog entry may point to a file truncated after discovery.
     // Do not send empty placeholders to Kodi as playable media.
     if fs::metadata(&canonical)
@@ -35,14 +43,6 @@ fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiErr
         .len()
         == 0
     {
-        return Err(KodiError::OutsideApprovedMediaRoot);
-    }
-    let is_allowed = roots.iter().any(|root| {
-        fs::canonicalize(root)
-            .map(|safe_root| canonical.starts_with(&safe_root) && canonical != safe_root)
-            .unwrap_or(false)
-    });
-    if !is_allowed {
         return Err(KodiError::OutsideApprovedMediaRoot);
     }
     // JSON-RPC file paths must round-trip exactly. Lossy UTF-8 conversion
