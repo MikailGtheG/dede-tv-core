@@ -47,6 +47,11 @@ pub fn discover_media(directory: &Path) -> io::Result<Vec<PathBuf>> {
         if path.to_str().is_none() || !has_video_extension(&path) {
             continue;
         }
+        // Empty placeholder files cannot provide playable video frames.
+        // Skip them before applying the playlist size limit.
+        if entry.metadata()?.len() == 0 {
+            continue;
+        }
         if videos.len() >= MAX_MEDIA_FILES {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -77,6 +82,16 @@ mod tests {
         assert_eq!(found.len(), 2);
         assert_eq!(found[0].file_name().unwrap(), "a.MKV");
         assert_eq!(found[1].file_name().unwrap(), "b.mp4");
+    }
+
+    #[test]
+    fn skips_empty_video_placeholders() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("empty.mkv"), b"").unwrap();
+        fs::write(dir.path().join("ready.mp4"), b"video").unwrap();
+        let found = discover_media(dir.path()).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].file_name().unwrap(), "ready.mp4");
     }
 
     #[test]
