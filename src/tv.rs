@@ -370,6 +370,28 @@ mod tests {
     }
 
     #[test]
+    fn single_channel_step_never_restarts_kodi_playback() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        for key in [RemoteKey::ChannelUp, RemoteKey::ChannelDown] {
+            assert!(matches!(tv.handle(key, &db, 0).unwrap(), TvEvent::None));
+        }
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(PickerEvent::Show { selected: 0 })
+        ));
+        for key in [RemoteKey::ChannelUp, RemoteKey::ChannelDown] {
+            assert!(matches!(tv.handle(key, &db, 0).unwrap(), TvEvent::Picker(PickerEvent::Hide)));
+            assert_eq!(tv.picker.screen(), crate::remote::Screen::LiveTv);
+            assert!(matches!(
+                tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+                TvEvent::Picker(PickerEvent::Show { selected: 0 })
+            ));
+        }
+        assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
     fn empty_channel_list_is_safe() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(vec![], vec![]);
