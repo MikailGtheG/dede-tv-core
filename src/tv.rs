@@ -67,6 +67,38 @@ impl TvSession {
         db.set_last_channel(&key).map_err(|e| format!("{e:?}"))
     }
 
+    /// Confirm a PVR tune against the immutable Kodi request, not just its
+    /// display name. Reject catalog changes that reuse a name for another ID.
+    /// Call this after Kodi reports Player.Open success.
+    pub fn confirm_pvr_request(
+        &self,
+        db: &VirtualChannels,
+        name: &str,
+        request: &Value,
+    ) -> Result<(), String> {
+        if request.get("method").and_then(Value::as_str) != Some("Player.Open") {
+            return Err("not a Kodi playback request".into());
+        }
+        let requested_id = request
+            .pointer("/params/item/channelid")
+            .and_then(Value::as_u64)
+            .ok_or("missing PVR channel ID")?;
+        if requested_id == 0 || requested_id > u32::MAX as u64 {
+            return Err("invalid PVR channel ID".into());
+        }
+        let mut matches = self.channels.iter().filter(|(channel, _)| channel == name);
+        let (_, source) = matches.next().ok_or("channel not found")?;
+        if matches.next().is_some() {
+            return Err("ambiguous channel name".into());
+        }
+        match source {
+            Source::Pvr(id) if u64::from(*id) == requested_id => {
+                self.confirm_playback(db, name)
+            }
+            _ => Err("channel catalog changed since playback request".into()),
+        }
+    }
+
     pub fn handle(
         &mut self,
         key: RemoteKey,
@@ -271,6 +303,23 @@ mod tests {
         }
         assert!(tv.confirm_playback(&db, "TRT 1").is_err());
         tv.confirm_playback(&db, "ATV").unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
+    }
+
+    #[test]
+    fn stale_pvr_ack_cannot_persist_reassigned_channel_id() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        tv.handle(RemoteKey::Ok, &db, 0).unwrap();
+        let request = match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
+            TvEvent::Playback { request, .. } => request,
+            _ => panic!("expected playback"),
+        };
+        tv.replace_channels(vec![("TRT 1".into(), Source::Pvr(18))]);
+        assert!(tv.confirm_pvr_request(&db, "TRT 1", &request).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+        let current = kodi::open_pvr_channel(18, 1);
+        tv.confirm_pvr_request(&db, "TRT 1", &current).unwrap();
         assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
     }
 
