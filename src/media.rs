@@ -94,6 +94,18 @@ mod tests {
         assert_eq!(discover_media(dir.path()).unwrap(), found);
     }
 
+    #[test]
+    fn rejects_playlists_exceeding_media_limit_without_returning_partial_catalog() {
+        let dir = tempdir().unwrap();
+        for index in 0..=MAX_MEDIA_FILES {
+            fs::write(dir.path().join(format!("episode-{index:05}.mkv")), b"v").unwrap();
+        }
+        assert_eq!(
+            discover_media(dir.path()).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn skips_symlink_and_broken_symlink() {
