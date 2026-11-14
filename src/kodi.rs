@@ -1,0 +1,283 @@
+//! Pure Kodi JSON-RPC request construction. Network transport is intentionally absent:
+//! Kodi must not expose unauthenticated JSON-RPC to the LAN or internet.
+use crate::Playback;
+use serde_json::{json, Value};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug)]
+pub enum KodiError {
+    NoApprovedMediaRoot,
+    OutsideApprovedMediaRoot,
+    InvalidMediaPath(std::io::Error),
+    NonUtf8MediaPath,
+}
+
+fn approved_media_path(file: &str, roots: &[PathBuf]) -> Result<PathBuf, KodiError> {
+    if roots.is_empty() {
+        return Err(KodiError::NoApprovedMediaRoot);
+    }
+    let path = Path::new(file);
+    if !path.is_absolute() {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
+    let canonical = fs::canonicalize(path).map_err(KodiError::InvalidMediaPath)?;
+    if !canonical.is_file() {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
+    if !crate::media::has_video_extension(&canonical) {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
+    // A stale catalog entry may point to a file truncated after discovery.
+    // Do not send empty placeholders to Kodi as playable media.
+    if fs::metadata(&canonical)
+        .map_err(KodiError::InvalidMediaPath)?
+        .len()
+        == 0
+    {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
+    let is_allowed = roots.iter().any(|root| {
+        fs::canonicalize(root)
+            .map(|safe_root| canonical.starts_with(&safe_root) && canonical != safe_root)
+            .unwrap_or(false)
+    });
+    if !is_allowed {
+        return Err(KodiError::OutsideApprovedMediaRoot);
+    }
+    // JSON-RPC file paths must round-trip exactly. Lossy UTF-8 conversion
+    // could silently select a different filename on Unix filesystems.
+    if canonical.to_str().is_none() {
+        return Err(KodiError::NonUtf8MediaPath);
+    }
+    Ok(canonical)
+}
+
+/// JSON-RPC Player.Open request with an explicit resume position.
+///
+/// The caller must route this request through a separate restricted/authenticated
+/// local transport. Never enable Kodi JSON-RPC TCP on an externally reachable NIC.
+pub fn open_virtual_channel(
+    playback: &Playback,
+    approved_roots: &[PathBuf],
+    request_id: u64,
+) -> Result<Value, KodiError> {
+    let file = approved_media_path(&playback.path, approved_roots)?;
+    let milliseconds = playback.position_ms;
+    // Kodi's Player.Position.Time uses hours, minutes, seconds, milliseconds.
+    let resume = json!({
+        "hours": milliseconds / 3_600_000,
+        "minutes": (milliseconds / 60_000) % 60,
+        "seconds": (milliseconds / 1_000) % 60,
+        "milliseconds": milliseconds % 1_000
+    });
+    Ok(json!({
+        "jsonrpc": "2.0",
+        "method": "Player.Open",
+        "params": {
+            "item": { "file": file.to_str().expect("approved path is UTF-8") },
+            "options": { "resume": resume }
+        },
+        "id": request_id
+    }))
+}
+
+/// Open an existing Kodi PVR channel. This sends no arbitrary URL or file path.
+pub fn open_pvr_channel(channel_id: u32, request_id: u64) -> Value {
+    json!({
+        "jsonrpc": "2.0",
+        "method": "Player.Open",
+        "params": { "item": { "channelid": channel_id } },
+        "id": request_id
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn pvr_request_uses_channel_identifier() {
+        let r = open_pvr_channel(42, 8);
+        assert_eq!(r["params"]["item"]["channelid"], 42);
+        assert_eq!(r["method"], "Player.Open");
+    }
+
+    #[test]
+    fn local_media_request_preserves_seek_position() {
+        let dir = tempdir().unwrap();
+        let movie = dir.path().join("Folge 001.mkv");
+        fs::write(&movie, b"placeholder").unwrap();
+        let playback = Playback {
+            path: movie.to_string_lossy().to_string(),
+            position_ms: 3_726_123,
+            next_transition_ms: 0,
+        };
+        let r = open_virtual_channel(&playback, &[dir.path().to_path_buf()], 5).unwrap();
+        assert_eq!(r["params"]["options"]["resume"]["hours"], 1);
+        assert_eq!(r["params"]["options"]["resume"]["minutes"], 2);
+        assert_eq!(r["params"]["options"]["resume"]["seconds"], 6);
+        assert_eq!(r["params"]["options"]["resume"]["milliseconds"], 123);
+        assert_eq!(
+            r["params"]["item"]["file"],
+            movie.to_string_lossy().as_ref()
+        );
+    }
+
+    #[test]
+    fn rejects_unapproved_path_and_symlink_escape() {
+        let allowed = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let foreign = outside.path().join("outside.mkv");
+        fs::write(&foreign, b"placeholder").unwrap();
+        let item = Playback {
+            path: foreign.to_string_lossy().to_string(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        assert!(matches!(
+            open_virtual_channel(&item, &[allowed.path().to_path_buf()], 1),
+            Err(KodiError::OutsideApprovedMediaRoot)
+        ));
+        #[cfg(unix)]
+        {
+            let symlink = allowed.path().join("escape.mkv");
+            std::os::unix::fs::symlink(&foreign, &symlink).unwrap();
+            let escaped = Playback {
+                path: symlink.to_string_lossy().to_string(),
+                ..item
+            };
+            assert!(matches!(
+                open_virtual_channel(&escaped, &[allowed.path().to_path_buf()], 1),
+                Err(KodiError::OutsideApprovedMediaRoot)
+            ));
+        }
+    }
+
+    #[test]
+    fn refuses_non_video_files_even_within_approved_root() {
+        let dir = tempdir().unwrap();
+        let document = dir.path().join("secrets.txt");
+        fs::write(&document, b"private").unwrap();
+        let item = Playback {
+            path: document.to_string_lossy().to_string(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        assert!(matches!(
+            open_virtual_channel(&item, &[dir.path().to_path_buf()], 1),
+            Err(KodiError::OutsideApprovedMediaRoot)
+        ));
+    }
+
+    #[test]
+    fn rejects_sibling_directory_with_shared_root_prefix() {
+        let parent = tempdir().unwrap();
+        let approved = parent.path().join("movies");
+        let sibling = parent.path().join("movies-private");
+        fs::create_dir(&approved).unwrap();
+        fs::create_dir(&sibling).unwrap();
+        let private_video = sibling.join("private.mkv");
+        fs::write(&private_video, b"video").unwrap();
+        let item = Playback {
+            path: private_video.to_str().unwrap().to_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        assert!(matches!(
+            open_virtual_channel(&item, &[approved], 1),
+            Err(KodiError::OutsideApprovedMediaRoot)
+        ));
+    }
+
+    #[test]
+    fn refuses_video_truncated_after_media_discovery() {
+        let dir = tempdir().unwrap();
+        let movie = dir.path().join("episode.mkv");
+        fs::write(&movie, b"video").unwrap();
+        let item = Playback {
+            path: movie.to_str().unwrap().to_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        fs::write(&movie, b"").unwrap();
+        assert!(matches!(
+            open_virtual_channel(&item, &[dir.path().to_path_buf()], 1),
+            Err(KodiError::OutsideApprovedMediaRoot)
+        ));
+    }
+
+    #[test]
+    fn nested_media_inside_approved_root_is_playable() {
+        let dir = tempdir().unwrap();
+        let nested = dir.path().join("series").join("season-1");
+        fs::create_dir_all(&nested).unwrap();
+        let episode = nested.join("episode.mkv");
+        fs::write(&episode, b"placeholder").unwrap();
+        let item = Playback {
+            path: episode.to_string_lossy().into_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        let request = open_virtual_channel(&item, &[dir.path().to_path_buf()], 7).unwrap();
+        assert_eq!(
+            request["params"]["item"]["file"],
+            episode.to_string_lossy().as_ref()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_media_path_is_rejected_without_lossy_substitution() {
+        use std::os::unix::ffi::OsStringExt;
+        let dir = tempdir().unwrap();
+        let filename = std::ffi::OsString::from_vec(b"episode-\xff.mkv".to_vec());
+        let movie = dir.path().join(filename);
+        fs::write(&movie, b"placeholder").unwrap();
+        let alias = dir.path().join("alias.mkv");
+        std::os::unix::fs::symlink(&movie, &alias).unwrap();
+        let item = Playback {
+            path: alias.to_str().unwrap().to_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        // The input is valid UTF-8, but canonicalization resolves the
+        // symlink to a non-UTF8 filename. Never serialize it lossily.
+        assert!(matches!(
+            open_virtual_channel(&item, &[dir.path().to_path_buf()], 1),
+            Err(KodiError::NonUtf8MediaPath)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_to_video_within_approved_root_remains_playable() {
+        let dir = tempdir().unwrap();
+        let target = dir.path().join("episode.mkv");
+        fs::write(&target, b"video").unwrap();
+        let alias = dir.path().join("current.mkv");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let item = Playback {
+            path: alias.to_str().unwrap().to_owned(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        let request = open_virtual_channel(&item, &[dir.path().to_path_buf()], 9).unwrap();
+        assert_eq!(request["method"], "Player.Open");
+        assert_eq!(request["params"]["item"]["file"], target.to_str().unwrap());
+    }
+
+    #[test]
+    fn no_root_fails_closed() {
+        let item = Playback {
+            path: "/tmp/a.mkv".to_string(),
+            position_ms: 0,
+            next_transition_ms: 0,
+        };
+        assert!(matches!(
+            open_virtual_channel(&item, &[], 1),
+            Err(KodiError::NoApprovedMediaRoot)
+        ));
+    }
+}

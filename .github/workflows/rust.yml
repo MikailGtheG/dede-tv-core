@@ -1,0 +1,60 @@
+name: Rust core
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: test -s Cargo.lock && cargo metadata --locked --no-deps > /dev/null
+      - run: cargo clippy --all-targets --locked -- -D warnings
+      - run: cargo test --all-targets --locked
+      - name: Preserve resolved Cargo dependencies
+        uses: actions/upload-artifact@v4
+        with:
+          name: dede-tv-core-cargo-lock
+          path: Cargo.lock
+          retention-days: 7
+          if-no-files-found: error
+      - name: Local CLI smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          directory="$(mktemp -d)"
+          trap 'rm -rf "$directory"' EXIT
+          # Playback rejects zero-byte media; use a nonempty fixture for the CLI smoke test.
+          printf "sample video fixture" > "$directory/film.mkv"
+          cargo run --locked --quiet -- --db "$directory/state.db" add "Dede Film" "$directory/film.mkv" 3600000
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" list)" = "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "Dede Film"
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          # Invalid selections must not poison next boot's persisted state.
+          if cargo run --locked --quiet -- --db "$directory/state.db" select "Missing Channel"; then
+            echo 'Missing channel was incorrectly accepted' >&2
+            exit 1
+          fi
+          if cargo run --locked --quiet -- --db "$directory/state.db" select "pvr:0"; then
+            echo 'Invalid PVR identifier was incorrectly accepted' >&2
+            exit 1
+          fi
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "pvr:12"
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "pvr:12"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "virtual:Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" now "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" request-virtual "Dede Film" "$directory" | grep -q '"method":"Player.Open"'
+          cargo run --locked --quiet -- --db "$directory/state.db" request-pvr 12 | grep -q '"channelid":12'
+          cargo run --locked --quiet -- --db "$directory/state.db" remove "Dede Film"
+          test -z "$(cargo run --locked --quiet -- --db "$directory/state.db" list)"
+          test -z "$(cargo run --locked --quiet -- --db "$directory/state.db" last)"
+          if cargo run --locked --quiet -- --db "$directory/state.db" remove "Dede Film"; then
+            echo "Removing a missing channel unexpectedly succeeded" >&2
+            exit 1
+          fi
