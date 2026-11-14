@@ -34,7 +34,9 @@ pub fn discover_media(directory: &Path) -> io::Result<Vec<PathBuf>> {
             continue; // rejects symlinks and directories
         }
         let path = entry.path();
-        if !has_video_extension(&path) {
+        // Kodi JSON-RPC accepts UTF-8 paths only. Do not list media that
+        // cannot later be opened without lossy filename substitution.
+        if path.to_str().is_none() || !has_video_extension(&path) {
             continue;
         }
         if videos.len() >= MAX_MEDIA_FILES {
@@ -80,6 +82,19 @@ mod tests {
         symlink(&file, dir.path().join("linked.mkv")).unwrap();
         symlink("nonexistent.mkv", dir.path().join("broken.mkv")).unwrap();
         assert!(discover_media(dir.path()).unwrap().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn skips_non_utf8_filenames_that_kodi_cannot_open() {
+        use std::os::unix::ffi::OsStringExt;
+        let dir = tempdir().unwrap();
+        let invalid = std::ffi::OsString::from_vec(b"episode-\xff.mkv".to_vec());
+        fs::write(dir.path().join(invalid), b"v").unwrap();
+        fs::write(dir.path().join("valid.mkv"), b"v").unwrap();
+        let found = discover_media(dir.path()).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].file_name().unwrap(), "valid.mkv");
     }
 
     #[test]
