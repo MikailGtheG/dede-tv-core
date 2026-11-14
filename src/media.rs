@@ -79,6 +79,21 @@ mod tests {
         assert_eq!(found[1].file_name().unwrap(), "b.mp4");
     }
 
+    #[test]
+    fn media_order_is_stable_regardless_of_creation_order() {
+        let dir = tempdir().unwrap();
+        for name in ["z-last.mkv", "m-middle.mp4", "a-first.MKV"] {
+            fs::write(dir.path().join(name), b"video").unwrap();
+        }
+        let found = discover_media(dir.path()).unwrap();
+        let names: Vec<_> = found
+            .iter()
+            .map(|path| path.file_name().unwrap().to_str().unwrap())
+            .collect();
+        assert_eq!(names, ["a-first.MKV", "m-middle.mp4", "z-last.mkv"]);
+        assert_eq!(discover_media(dir.path()).unwrap(), found);
+    }
+
     #[cfg(unix)]
     #[test]
     fn skips_symlink_and_broken_symlink() {
