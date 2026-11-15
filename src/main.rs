@@ -167,6 +167,8 @@ fn run() -> Result<(), String> {
                     kodi::open_pvr_channel(id, 1)
                 } else {
                     let name = last.strip_prefix("virtual:").unwrap_or(&last);
+                    // Reject invalid legacy resume names before contacting Kodi.
+                    validate_virtual_resume_name(name)?;
                     let play = channels
                         .current(name, now_ms()?)
                         .map_err(|e| format!("{e:?}"))?;
