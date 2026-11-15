@@ -63,3 +63,28 @@ fn removing_legacy_bare_selected_channel_clears_boot_resume_state() {
     assert!(resumed.status.success(), "{resumed:?}");
     assert_eq!(resumed.stdout, b"No last channel stored\n");
 }
+
+#[test]
+fn removing_selected_channel_keeps_other_channels_available() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
+    assert!(cli(&db, &["add", "Sports", "sports.mp4", "1000"])
+        .status
+        .success());
+    assert!(cli(&db, &["select", "virtual:News"]).status.success());
+
+    assert!(cli(&db, &["remove", "News"]).status.success());
+    assert_eq!(cli(&db, &["last"]).stdout, b"\n");
+
+    let channels = cli(&db, &["list"]);
+    assert!(channels.status.success(), "{channels:?}");
+    let listing = String::from_utf8(channels.stdout).unwrap();
+    assert!(listing.contains("Sports"), "{listing}");
+    assert!(!listing.contains("News"), "{listing}");
+
+    assert!(cli(&db, &["select", "virtual:Sports"]).status.success());
+    assert_eq!(cli(&db, &["last"]).stdout, b"virtual:Sports\n");
+}
