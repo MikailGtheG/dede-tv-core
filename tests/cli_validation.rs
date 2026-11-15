@@ -134,8 +134,14 @@ fn request_pvr_rejects_invalid_ids_without_emitting_kodi_json_or_changing_select
 
     for invalid in ["0", "-1", "+1", "abc", "4294967296"] {
         let output = cli(&db, &["request-pvr", invalid]);
-        assert!(!output.status.success(), "invalid PVR ID accepted: {invalid:?}");
-        assert!(output.stdout.is_empty(), "invalid PVR ID emitted Kodi JSON");
+        assert!(
+            !output.status.success(),
+            "invalid PVR ID accepted: {invalid:?}"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "invalid PVR ID emitted Kodi JSON"
+        );
     }
 
     let last = cli(&db, &["last"]);
