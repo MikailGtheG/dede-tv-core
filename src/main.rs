@@ -158,6 +158,9 @@ fn run() -> Result<(), String> {
             println!("{}", kodi::open_pvr_channel(id, 1));
         }
         "request-virtual" if params.len() == 2 => {
+            // Keep the dry-run request path consistent with actual playback.
+            // Invalid legacy names must not produce a usable Kodi request.
+            validate_virtual_resume_name(&params[0])?;
             let play = channels
                 .current(&params[0], now_ms()?)
                 .map_err(|e| format!("{e:?}"))?;
