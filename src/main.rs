@@ -216,7 +216,7 @@ mod tests {
     #[test]
     fn virtual_playback_names_must_fit_persisted_resume_key() {
         assert!(validate_virtual_resume_name(&"é".repeat(46)).is_ok());
-        for invalid in ["é".repeat(47), " ".to_string(), "A\\nB".to_string()] {
+        for invalid in ["é".repeat(47), " ".to_string(), "A\nB".to_string()] {
             assert!(validate_virtual_resume_name(&invalid).is_err());
         }
     }
