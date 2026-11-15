@@ -88,3 +88,19 @@ fn removing_selected_channel_keeps_other_channels_available() {
     assert!(cli(&db, &["select", "virtual:Sports"]).status.success());
     assert_eq!(cli(&db, &["last"]).stdout, b"virtual:Sports\n");
 }
+
+#[test]
+fn failed_removal_does_not_clear_selected_virtual_channel() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
+    assert!(cli(&db, &["select", "virtual:News"]).status.success());
+
+    let missing = cli(&db, &["remove", "Missing"]);
+    assert!(!missing.status.success());
+    assert!(missing.stdout.is_empty());
+    assert_eq!(cli(&db, &["last"]).stdout, b"virtual:News\n");
+    assert_eq!(cli(&db, &["list"]).stdout, b"News\n");
+}
