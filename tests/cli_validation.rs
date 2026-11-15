@@ -145,3 +145,19 @@ fn request_pvr_rejects_invalid_ids_without_emitting_kodi_json_or_changing_select
     assert!(last.status.success(), "{last:?}");
     assert_eq!(last.stdout, b"pvr:7\n");
 }
+
+#[test]
+fn resume_without_saved_channel_does_not_contact_kodi() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+
+    // On first boot there is no selected channel and Kodi may not be running.
+    // This path must complete without attempting a playback connection.
+    let output = cli(&db, &["resume-last", dir.path().to_str().unwrap()]);
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"No last channel stored\n");
+
+    let last = cli(&db, &["last"]);
+    assert!(last.status.success(), "{last:?}");
+    assert_eq!(last.stdout, b"\n");
+}
