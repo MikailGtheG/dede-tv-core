@@ -117,6 +117,8 @@ fn run() -> Result<(), String> {
                 parse_pvr_id(id)?;
             } else {
                 let name = selected.strip_prefix("virtual:").unwrap_or(selected);
+                // Legacy databases may contain names that cannot fit the resume key.
+                validate_virtual_resume_name(name)?;
                 if !channels
                     .list_channels()
                     .map_err(|e| format!("{e:?}"))?
