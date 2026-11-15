@@ -60,3 +60,22 @@ fn selection_rejects_missing_or_unresumable_channels_without_changing_last() {
     assert!(last.status.success(), "{last:?}");
     assert_eq!(String::from_utf8(last.stdout).unwrap(), "News\n");
 }
+
+#[test]
+fn request_virtual_rejects_invalid_names_before_generating_kodi_json() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
+
+    for invalid in ["pvr:1", "virtual:News", "bad\nname"] {
+        let output = cli(&db, &["request-virtual", invalid, dir.path().to_str().unwrap()]);
+        assert!(!output.status.success(), "invalid preview accepted: {invalid:?}");
+        assert!(output.stdout.is_empty(), "invalid preview emitted Kodi JSON");
+    }
+
+    let last = cli(&db, &["last"]);
+    assert!(last.status.success(), "{last:?}");
+    assert!(last.stdout.is_empty() || last.stdout == b"\n");
+}
