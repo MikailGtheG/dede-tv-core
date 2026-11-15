@@ -22,9 +22,13 @@ fn rejected_virtual_names_never_modify_channel_list_or_resume_selection() {
     let selected = cli(&db, &["select", "virtual:News"]);
     assert!(selected.status.success(), "{selected:?}");
 
-    for invalid in ["pvr:1", "virtual:News", "bad\nname", "é".repeat(47).as_str()] {
+    let too_long = "é".repeat(47);
+    for invalid in ["pvr:1", "virtual:News", "bad\nname", too_long.as_str()] {
         let result = cli(&db, &["add", invalid, "clip.mp4", "1000"]);
-        assert!(!result.status.success(), "invalid name accepted: {invalid:?}");
+        assert!(
+            !result.status.success(),
+            "invalid name accepted: {invalid:?}"
+        );
     }
 
     let listed = cli(&db, &["list"]);
@@ -40,12 +44,17 @@ fn rejected_virtual_names_never_modify_channel_list_or_resume_selection() {
 fn selection_rejects_missing_or_unresumable_channels_without_changing_last() {
     let dir = tempdir().unwrap();
     let db = dir.path().join("channels.sqlite");
-    assert!(cli(&db, &["add", "News", "news.mp4", "1000"]).status.success());
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
     assert!(cli(&db, &["select", "News"]).status.success());
 
     for invalid in ["Missing", "virtual:Missing", "virtual:bad\nname", "pvr:0"] {
         let result = cli(&db, &["select", invalid]);
-        assert!(!result.status.success(), "invalid selection accepted: {invalid:?}");
+        assert!(
+            !result.status.success(),
+            "invalid selection accepted: {invalid:?}"
+        );
     }
     let last = cli(&db, &["last"]);
     assert!(last.status.success(), "{last:?}");
