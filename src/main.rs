@@ -43,7 +43,12 @@ fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
 // Persisted virtual-channel keys include the eight-byte "virtual:" prefix.
 // Reject unpersistable names before sending a playback command to Kodi.
 fn validate_virtual_resume_name(name: &str) -> Result<(), &'static str> {
-    if name.trim().is_empty() || name.len() > 92 || name.chars().any(char::is_control) {
+    if name.trim().is_empty()
+        || name.len() > 92
+        || name.chars().any(char::is_control)
+        || name.starts_with("pvr:")
+        || name.starts_with("virtual:")
+    {
         return Err("invalid virtual channel name for boot resume");
     }
     Ok(())
@@ -222,7 +227,13 @@ mod tests {
     #[test]
     fn virtual_playback_names_must_fit_persisted_resume_key() {
         assert!(validate_virtual_resume_name(&"é".repeat(46)).is_ok());
-        for invalid in ["é".repeat(47), " ".to_string(), "A\nB".to_string()] {
+        for invalid in [
+            "é".repeat(47),
+            " ".to_string(),
+            "A\nB".to_string(),
+            "pvr:1".to_string(),
+            "virtual:News".to_string(),
+        ] {
             assert!(validate_virtual_resume_name(&invalid).is_err());
         }
     }
