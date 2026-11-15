@@ -15,7 +15,9 @@ fn cli(db: &std::path::Path, args: &[&str]) -> std::process::Output {
 fn removing_other_channel_preserves_selected_pvr_and_failed_removal_is_noop() {
     let dir = tempdir().unwrap();
     let db = dir.path().join("channels.sqlite");
-    assert!(cli(&db, &["add", "News", "news.mp4", "1000"]).status.success());
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
     assert!(cli(&db, &["select", "pvr:7"]).status.success());
 
     let missing = cli(&db, &["remove", "Missing"]);
@@ -32,7 +34,9 @@ fn removing_other_channel_preserves_selected_pvr_and_failed_removal_is_noop() {
 fn removing_selected_virtual_channel_clears_boot_resume_state() {
     let dir = tempdir().unwrap();
     let db = dir.path().join("channels.sqlite");
-    assert!(cli(&db, &["add", "News", "news.mp4", "1000"]).status.success());
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
     assert!(cli(&db, &["select", "virtual:News"]).status.success());
     assert!(cli(&db, &["remove", "News"]).status.success());
     assert_eq!(cli(&db, &["last"]).stdout, b"\n");
