@@ -88,3 +88,36 @@ fn request_virtual_rejects_invalid_names_before_generating_kodi_json() {
     assert!(last.status.success(), "{last:?}");
     assert!(last.stdout.is_empty() || last.stdout == b"\n");
 }
+
+#[test]
+fn invalid_video_durations_never_replace_an_existing_channel() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["add", "News", "original.mp4", "1000"])
+        .status
+        .success());
+    assert!(cli(&db, &["select", "virtual:News"])
+        .status
+        .success());
+
+    for duration in ["0", "-1", "+1", "not-a-number", "18446744073709551616"] {
+        let result = cli(&db, &["add", "News", "replacement.mp4", duration]);
+        assert!(!result.status.success(), "invalid duration accepted: {duration:?}");
+        assert!(result.stdout.is_empty(), "failed add printed success output");
+    }
+
+    let listed = cli(&db, &["list"]);
+    assert!(listed.status.success(), "{listed:?}");
+    assert_eq!(listed.stdout, b"News\n");
+
+    let current = cli(&db, &["now", "News"]);
+    assert!(current.status.success(), "{current:?}");
+    assert!(
+        String::from_utf8_lossy(&current.stdout).starts_with("original.mp4 @ "),
+        "invalid add replaced the existing playlist: {current:?}"
+    );
+
+    let last = cli(&db, &["last"]);
+    assert!(last.status.success(), "{last:?}");
+    assert_eq!(last.stdout, b"virtual:News\n");
+}
