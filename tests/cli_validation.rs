@@ -125,3 +125,20 @@ fn invalid_video_durations_never_replace_an_existing_channel() {
     assert!(last.status.success(), "{last:?}");
     assert_eq!(last.stdout, b"virtual:News\n");
 }
+
+#[test]
+fn request_pvr_rejects_invalid_ids_without_emitting_kodi_json_or_changing_selection() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["select", "pvr:7"]).status.success());
+
+    for invalid in ["0", "-1", "+1", "abc", "4294967296"] {
+        let output = cli(&db, &["request-pvr", invalid]);
+        assert!(!output.status.success(), "invalid PVR ID accepted: {invalid:?}");
+        assert!(output.stdout.is_empty(), "invalid PVR ID emitted Kodi JSON");
+    }
+
+    let last = cli(&db, &["last"]);
+    assert!(last.status.success(), "{last:?}");
+    assert_eq!(last.stdout, b"pvr:7\n");
+}
