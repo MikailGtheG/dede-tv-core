@@ -100,7 +100,13 @@ fn invalid_video_durations_never_replace_an_existing_channel() {
         .status
         .success());
 
-    for duration in ["0", "-1", "+1", "not-a-number", "18446744073709551616"] {
+    for duration in [
+        "0",
+        "-1",
+        "+1",
+        "not-a-number",
+        "18446744073709551616",
+    ] {
         let result = cli(&db, &["add", "News", "replacement.mp4", duration]);
         assert!(
             !result.status.success(),
