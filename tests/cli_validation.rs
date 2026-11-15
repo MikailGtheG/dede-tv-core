@@ -96,9 +96,7 @@ fn invalid_video_durations_never_replace_an_existing_channel() {
     assert!(cli(&db, &["add", "News", "original.mp4", "1000"])
         .status
         .success());
-    assert!(cli(&db, &["select", "virtual:News"])
-        .status
-        .success());
+    assert!(cli(&db, &["select", "virtual:News"]).status.success());
 
     for duration in ["0", "-1", "+1", "not-a-number", "18446744073709551616"] {
         let result = cli(&db, &["add", "News", "replacement.mp4", duration]);
