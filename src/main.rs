@@ -40,6 +40,15 @@ fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
     }
 }
 
+// Persisted virtual-channel keys include the eight-byte "virtual:" prefix.
+// Reject unpersistable names before sending a playback command to Kodi.
+fn validate_virtual_resume_name(name: &str) -> Result<(), &'static str> {
+    if name.trim().is_empty() || name.len() > 92 || name.chars().any(char::is_control) {
+        return Err("invalid virtual channel name for boot resume");
+    }
+    Ok(())
+}
+
 // Zero-length videos cannot advance a deterministic playlist.
 fn parse_duration_ms(raw: &str) -> Result<u64, &'static str> {
     if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
@@ -176,6 +185,7 @@ fn run() -> Result<(), String> {
             println!("{reply}");
         }
         "play-virtual" if params.len() == 2 => {
+            validate_virtual_resume_name(&params[0])?;
             let play = channels
                 .current(&params[0], now_ms()?)
                 .map_err(|e| format!("{e:?}"))?;
@@ -201,7 +211,15 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_duration_ms, parse_pvr_id};
+    use super::{parse_duration_ms, parse_pvr_id, validate_virtual_resume_name};
+
+    #[test]
+    fn virtual_playback_names_must_fit_persisted_resume_key() {
+        assert!(validate_virtual_resume_name(&"é".repeat(46)).is_ok());
+        for invalid in ["é".repeat(47), " ".to_string(), "A\\nB".to_string()] {
+            assert!(validate_virtual_resume_name(&invalid).is_err());
+        }
+    }
 
     #[test]
     fn video_durations_must_be_positive() {
