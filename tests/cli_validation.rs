@@ -70,9 +70,18 @@ fn request_virtual_rejects_invalid_names_before_generating_kodi_json() {
         .success());
 
     for invalid in ["pvr:1", "virtual:News", "bad\nname"] {
-        let output = cli(&db, &["request-virtual", invalid, dir.path().to_str().unwrap()]);
-        assert!(!output.status.success(), "invalid preview accepted: {invalid:?}");
-        assert!(output.stdout.is_empty(), "invalid preview emitted Kodi JSON");
+        let output = cli(
+            &db,
+            &["request-virtual", invalid, dir.path().to_str().unwrap()],
+        );
+        assert!(
+            !output.status.success(),
+            "invalid preview accepted: {invalid:?}"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "invalid preview emitted Kodi JSON"
+        );
     }
 
     let last = cli(&db, &["last"]);
