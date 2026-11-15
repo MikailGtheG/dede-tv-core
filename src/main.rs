@@ -78,6 +78,8 @@ fn run() -> Result<(), String> {
                 return Err(usage().to_string());
             }
             let name = &params[0];
+            // A channel must be resumable before it can be added to the database.
+            validate_virtual_resume_name(name)?;
             let videos = params[1..]
                 .chunks_exact(2)
                 .map(|pair| {
