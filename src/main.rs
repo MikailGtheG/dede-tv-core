@@ -119,7 +119,13 @@ fn run() -> Result<(), String> {
             // Bare names are retained for compatibility with early databases.
             let selected = &params[0];
             if let Some(id) = selected.strip_prefix("pvr:") {
-                parse_pvr_id(id)?;
+                let id = parse_pvr_id(id)?;
+                // Canonicalize leading zeros so the saved channel identity is stable.
+                channels
+                    .set_last_channel(&format!("pvr:{id}"))
+                    .map_err(|e| format!("{e:?}"))?;
+                println!("Selected \"pvr:{id}\"");
+                return Ok(());
             } else {
                 let name = selected.strip_prefix("virtual:").unwrap_or(selected);
                 // Legacy databases may contain names that cannot fit the resume key.
