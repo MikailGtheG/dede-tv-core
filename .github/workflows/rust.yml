@@ -45,6 +45,8 @@ jobs:
             exit 1
           fi
           test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "Dede Film"
+          cargo run --locked --quiet -- --db "$directory/state.db" select "pvr:00012"
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "pvr:12"
           cargo run --locked --quiet -- --db "$directory/state.db" select "pvr:12"
           test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "pvr:12"
           cargo run --locked --quiet -- --db "$directory/state.db" select "virtual:Dede Film"
