@@ -78,8 +78,10 @@ impl TvSession {
         name: &str,
         request: &Value,
     ) -> Result<(), String> {
-        if request.get("method").and_then(Value::as_str) != Some("Player.Open") {
-            return Err("not a Kodi playback request".into());
+        if request.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
+            || request.get("method").and_then(Value::as_str) != Some("Player.Open")
+        {
+            return Err("not a Kodi JSON-RPC 2.0 playback request".into());
         }
         // A PVR acknowledgement must describe only a channel tune. A
         // mixed item (for example, both file and channelid) is not a
@@ -397,6 +399,21 @@ mod tests {
         assert!(tv.confirm_pvr_request(&db, "TRT 1", &mixed).is_err());
         assert_eq!(db.last_channel().unwrap(), None);
         let valid = kodi::open_pvr_channel(17, 1);
+        tv.confirm_pvr_request(&db, "TRT 1", &valid).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
+    fn malformed_jsonrpc_envelope_cannot_confirm_pvr_selection() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        let valid = kodi::open_pvr_channel(17, 1);
+        for version in [serde_json::Value::Null, serde_json::json!("1.0"), serde_json::json!(2)] {
+            let mut malformed = valid.clone();
+            malformed["jsonrpc"] = version;
+            assert!(tv.confirm_pvr_request(&db, "TRT 1", &malformed).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
         tv.confirm_pvr_request(&db, "TRT 1", &valid).unwrap();
         assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
     }
