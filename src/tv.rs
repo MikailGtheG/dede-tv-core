@@ -56,8 +56,10 @@ impl TvSession {
         if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
             return Err("channel name must not be blank or contain control characters".into());
         }
-        if matches!(source, Source::Virtual) && name.len() > 92 {
-            return Err("virtual channel name exceeds resumable limit".into());
+        if matches!(source, Source::Virtual)
+            && (name.len() > 92 || name.starts_with("pvr:") || name.starts_with("virtual:"))
+        {
+            return Err("invalid virtual channel name for boot resume".into());
         }
         let key = match source {
             Source::Pvr(0) => return Err("PVR channel ID must be positive".into()),
@@ -207,6 +209,16 @@ mod tests {
             db.last_channel().unwrap().as_deref(),
             Some("virtual:Movies")
         );
+    }
+
+    #[test]
+    fn reserved_virtual_prefixes_cannot_be_saved_as_resume_targets() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        for name in ["pvr:17", "virtual:Movies"] {
+            let tv = TvSession::new(vec![(name.into(), Source::Virtual)], vec![]);
+            assert!(tv.confirm_playback(&db, name).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
     }
 
     #[test]
