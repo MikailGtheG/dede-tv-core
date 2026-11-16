@@ -84,8 +84,15 @@ impl TvSession {
         // A PVR acknowledgement must describe only a channel tune. A
         // mixed item (for example, both file and channelid) is not a
         // trustworthy confirmation of which source Kodi actually opened.
-        let item = request
-            .pointer("/params/item")
+        let params = request
+            .get("params")
+            .and_then(Value::as_object)
+            .ok_or("missing PVR playback parameters")?;
+        if params.len() != 1 || !params.contains_key("item") {
+            return Err("ambiguous PVR playback parameters".into());
+        }
+        let item = params
+            .get("item")
             .and_then(Value::as_object)
             .ok_or("missing PVR channel item")?;
         if item.len() != 1 || !item.contains_key("channelid") {
@@ -368,6 +375,23 @@ mod tests {
             "jsonrpc": "2.0",
             "method": "Player.Open",
             "params": { "item": { "channelid": 17, "file": "/other/video.mp4" } },
+            "id": 1
+        });
+        assert!(tv.confirm_pvr_request(&db, "TRT 1", &mixed).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+        let valid = kodi::open_pvr_channel(17, 1);
+        tv.confirm_pvr_request(&db, "TRT 1", &valid).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
+    fn extra_pvr_playback_parameters_cannot_confirm_selection() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        let mixed = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "Player.Open",
+            "params": { "item": { "channelid": 17 }, "options": { "resume": true } },
             "id": 1
         });
         assert!(tv.confirm_pvr_request(&db, "TRT 1", &mixed).is_err());
