@@ -92,7 +92,11 @@ impl TvSession {
             || !["jsonrpc", "method", "params", "id"]
                 .iter()
                 .all(|key| envelope.contains_key(*key))
-            || request.get("id").and_then(Value::as_u64).filter(|id| *id > 0).is_none()
+            || request
+                .get("id")
+                .and_then(Value::as_u64)
+                .filter(|id| *id > 0)
+                .is_none()
         {
             return Err("invalid Kodi playback request envelope".into());
         }
@@ -427,7 +431,11 @@ mod tests {
             assert!(tv.confirm_pvr_request(&db, "TRT 1", &malformed).is_err());
             assert_eq!(db.last_channel().unwrap(), None);
         }
-        for id in [serde_json::json!(0), serde_json::json!(-1), serde_json::json!("1")] {
+        for id in [
+            serde_json::json!(0),
+            serde_json::json!(-1),
+            serde_json::json!("1"),
+        ] {
             let mut malformed = valid.clone();
             malformed["id"] = id;
             assert!(tv.confirm_pvr_request(&db, "TRT 1", &malformed).is_err());
