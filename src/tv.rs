@@ -130,7 +130,9 @@ impl TvSession {
                         "channel name must not be blank or contain control characters".into(),
                     );
                 }
-                if matches!(source, Source::Virtual) && name.len() > 92 {
+                if matches!(source, Source::Virtual)
+                    && (name.len() > 92 || name.starts_with("pvr:") || name.starts_with("virtual:"))
+                {
                     self.picker = previous_picker;
                     return Err("virtual channel name exceeds resumable limit".into());
                 }
@@ -217,6 +219,21 @@ mod tests {
         for name in ["pvr:17", "virtual:Movies"] {
             let tv = TvSession::new(vec![(name.into(), Source::Virtual)], vec![]);
             assert!(tv.confirm_playback(&db, name).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
+    }
+
+    #[test]
+    fn reserved_virtual_prefixes_cannot_generate_playback_requests() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        for name in ["pvr:17", "virtual:Movies"] {
+            let mut tv = TvSession::new(vec![(name.into(), Source::Virtual)], vec![]);
+            assert!(matches!(
+                tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+                TvEvent::Picker(_)
+            ));
+            assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+            assert_eq!(tv.picker.screen(), crate::remote::Screen::ChannelList);
             assert_eq!(db.last_channel().unwrap(), None);
         }
     }
