@@ -408,7 +408,11 @@ mod tests {
         let db = VirtualChannels::open(":memory:").unwrap();
         let tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
         let valid = kodi::open_pvr_channel(17, 1);
-        for version in [serde_json::Value::Null, serde_json::json!("1.0"), serde_json::json!(2)] {
+        for version in [
+            serde_json::Value::Null,
+            serde_json::json!("1.0"),
+            serde_json::json!(2),
+        ] {
             let mut malformed = valid.clone();
             malformed["jsonrpc"] = version;
             assert!(tv.confirm_pvr_request(&db, "TRT 1", &malformed).is_err());
