@@ -239,6 +239,51 @@ mod tests {
         ));
     }
     #[test]
+    fn channel_step_generates_pvr_tune_without_opening_kodi_menus() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("TRT 1".into(), Source::Pvr(17)),
+                ("ATV".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        match tv.handle(RemoteKey::ChannelUp, &db, 0).unwrap() {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, "ATV");
+                assert_eq!(request["method"], "Player.Open");
+                assert_eq!(request["params"]["item"]["channelid"], 18);
+            }
+            _ => panic!("expected direct channel-up playback"),
+        }
+        assert_eq!(db.last_channel().unwrap(), None);
+        match tv.handle(RemoteKey::ChannelDown, &db, 0).unwrap() {
+            TvEvent::Playback { channel, request } => {
+                assert_eq!(channel, "TRT 1");
+                assert_eq!(request["params"]["item"]["channelid"], 17);
+            }
+            _ => panic!("expected direct channel-down playback"),
+        }
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::LiveTv);
+    }
+
+    #[test]
+    fn invalid_channel_step_restores_selection_and_keeps_live_tv() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("TRT 1".into(), Source::Pvr(17)),
+                ("Broken".into(), Source::Pvr(0)),
+            ],
+            vec![],
+        );
+        assert!(tv.handle(RemoteKey::ChannelUp, &db, 0).is_err());
+        assert_eq!(tv.picker.selected(), Some("TRT 1"));
+        assert_eq!(tv.picker.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(db.last_channel().unwrap(), None);
+    }
+
+    #[test]
     fn confirmed_virtual_channel_uses_resumable_identity() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let tv = TvSession::new(vec![("Movies".into(), Source::Virtual)], vec![]);
