@@ -83,6 +83,19 @@ impl TvSession {
         {
             return Err("not a Kodi JSON-RPC 2.0 playback request".into());
         }
+        // Reject malformed envelopes instead of persisting a tune based on
+        // a request that Kodi would not recognize as our generated call.
+        let envelope = request
+            .as_object()
+            .ok_or("invalid Kodi playback request envelope")?;
+        if envelope.len() != 4
+            || !["jsonrpc", "method", "params", "id"]
+                .iter()
+                .all(|key| envelope.contains_key(*key))
+            || request.get("id").and_then(Value::as_u64).filter(|id| *id > 0).is_none()
+        {
+            return Err("invalid Kodi playback request envelope".into());
+        }
         // A PVR acknowledgement must describe only a channel tune. A
         // mixed item (for example, both file and channelid) is not a
         // trustworthy confirmation of which source Kodi actually opened.
@@ -399,6 +412,31 @@ mod tests {
         assert!(tv.confirm_pvr_request(&db, "TRT 1", &mixed).is_err());
         assert_eq!(db.last_channel().unwrap(), None);
         let valid = kodi::open_pvr_channel(17, 1);
+        tv.confirm_pvr_request(&db, "TRT 1", &valid).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
+    fn malformed_pvr_request_envelope_cannot_persist_selection() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        let valid = kodi::open_pvr_channel(17, 1);
+        for key in ["id", "params"] {
+            let mut malformed = valid.clone();
+            malformed.as_object_mut().unwrap().remove(key);
+            assert!(tv.confirm_pvr_request(&db, "TRT 1", &malformed).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
+        for id in [serde_json::json!(0), serde_json::json!(-1), serde_json::json!("1")] {
+            let mut malformed = valid.clone();
+            malformed["id"] = id;
+            assert!(tv.confirm_pvr_request(&db, "TRT 1", &malformed).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
+        let mut extra = valid.clone();
+        extra["unexpected"] = serde_json::json!(true);
+        assert!(tv.confirm_pvr_request(&db, "TRT 1", &extra).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
         tv.confirm_pvr_request(&db, "TRT 1", &valid).unwrap();
         assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
     }
