@@ -129,6 +129,21 @@ mod tests {
         }
     }
     #[test]
+    fn menu_and_unknown_keys_cannot_escape_channel_overlay() {
+        let mut controller = RemoteController::default();
+        assert_eq!(controller.handle(RemoteKey::Ok), Action::ShowChannels);
+        for key in [RemoteKey::Menu, RemoteKey::Unknown] {
+            assert_eq!(controller.handle(key), Action::None);
+            assert_eq!(controller.screen(), Screen::ChannelList);
+        }
+        assert_eq!(controller.handle(RemoteKey::Back), Action::HideChannels);
+        assert_eq!(controller.screen(), Screen::LiveTv);
+        for key in [RemoteKey::Menu, RemoteKey::Unknown, RemoteKey::Home] {
+            assert_eq!(controller.handle(key), Action::None);
+            assert_eq!(controller.screen(), Screen::LiveTv);
+        }
+    }
+    #[test]
     fn ok_selects_and_returns_to_video() {
         let mut controller = RemoteController::default();
         assert_eq!(controller.handle(RemoteKey::Ok), Action::ShowChannels);
