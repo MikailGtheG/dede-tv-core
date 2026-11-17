@@ -8,7 +8,7 @@ use crate::{
 use serde_json::Value;
 use std::path::PathBuf;
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Source {
     Pvr(u32),
     Virtual,
@@ -36,9 +36,26 @@ impl TvSession {
     /// picker entries. Updating the picker alone would leave stale playback
     /// sources behind after channels are removed or reordered.
     pub fn replace_channels(&mut self, channels: Vec<(String, Source)>) -> PickerEvent {
+        let source_changed = self.channels != channels;
         let names = channels.iter().map(|(name, _)| name.clone()).collect();
         self.channels = channels;
-        self.picker.replace_channels(names)
+        let event = self.picker.replace_channels(names);
+        // A source can change while its display name stays the same.
+        // Redraw an open overlay so the UI does not show stale catalog data.
+        if source_changed
+            && matches!(event, PickerEvent::None)
+            && self.picker.screen() == crate::remote::Screen::ChannelList
+        {
+            return PickerEvent::SelectionChanged {
+                selected: self
+                    .picker
+                    .channels()
+                    .iter()
+                    .position(|name| Some(name.as_str()) == self.picker.selected())
+                    .unwrap_or(0),
+            };
+        }
+        event
     }
 
     /// Record a channel only after Kodi acknowledges a successful Player.Open.
@@ -746,4 +763,28 @@ mod tests {
             TvEvent::None
         ));
     }
+    #[test]
+    fn source_change_with_same_name_redraws_open_channel_list() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        assert!(matches!(
+            tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+            TvEvent::Picker(PickerEvent::Show { selected: 0 })
+        ));
+        assert!(matches!(
+            tv.replace_channels(vec![("TRT 1".into(), Source::Pvr(18))]),
+            PickerEvent::SelectionChanged { selected: 0 }
+        ));
+        assert!(matches!(
+            tv.replace_channels(vec![("TRT 1".into(), Source::Pvr(18))]),
+            PickerEvent::None
+        ));
+        match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
+            TvEvent::Playback { request, .. } => {
+                assert_eq!(request["params"]["item"]["channelid"], 18);
+            }
+            _ => panic!("expected updated PVR source"),
+        }
+    }
+
 }
