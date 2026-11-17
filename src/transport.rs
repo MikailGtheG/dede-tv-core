@@ -70,7 +70,10 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
                         }
                         continue;
                     }
-                    if response["id"] != request["id"] || response["jsonrpc"] != "2.0" {
+                    if response["id"] != request["id"]
+                        || response["jsonrpc"] != "2.0"
+                        || response.get("method").is_some()
+                    {
                         return Err(invalid("unexpected JSON-RPC reply identifier"));
                     }
                     if response.get("error").is_some() {
@@ -376,4 +379,27 @@ mod tests {
         );
         worker.join().unwrap();
     }
+    #[test]
+    fn rejects_reply_that_also_claims_to_be_a_notification() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = thread::spawn(move || {
+            let (mut client, _) = listener.accept().unwrap();
+            let mut input = [0u8; 256];
+            let _ = client.read(&mut input).unwrap();
+            client
+                .write_all(br#"{"jsonrpc":"2.0","id":7,"method":"Player.OnPlay","result":"OK"}"#)
+                .unwrap();
+        });
+        let request = serde_json::json!({
+            "jsonrpc":"2.0","method":"Player.Open","id":7,
+            "params":{"item":{"channelid":1}}
+        });
+        assert_eq!(
+            send_to_loopback(port, &request).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        worker.join().unwrap();
+    }
+
 }
