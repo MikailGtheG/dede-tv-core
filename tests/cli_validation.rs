@@ -58,7 +58,7 @@ fn selection_rejects_missing_or_unresumable_channels_without_changing_last() {
     }
     let last = cli(&db, &["last"]);
     assert!(last.status.success(), "{last:?}");
-    assert_eq!(String::from_utf8(last.stdout).unwrap(), "News\n");
+    assert_eq!(String::from_utf8(last.stdout).unwrap(), "virtual:News\n");
 }
 
 #[test]
@@ -160,4 +160,18 @@ fn resume_without_saved_channel_does_not_contact_kodi() {
     let last = cli(&db, &["last"]);
     assert!(last.status.success(), "{last:?}");
     assert_eq!(last.stdout, b"\n");
+}
+
+#[test]
+fn bare_and_prefixed_virtual_selection_persist_the_same_resume_identity() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"]).status.success());
+    for selection in ["News", "virtual:News"] {
+        let selected = cli(&db, &["select", selection]);
+        assert!(selected.status.success(), "{selected:?}");
+        let last = cli(&db, &["last"]);
+        assert!(last.status.success(), "{last:?}");
+        assert_eq!(last.stdout, b"virtual:News\n");
+    }
 }
