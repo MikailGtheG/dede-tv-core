@@ -33,13 +33,18 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         return Err(invalid("request exceeds Kodi control size limit"));
     }
     payload.push(b'\n');
+    // The deadline includes connection setup and request transmission, not
+    // just response reads. A stalled Kodi process must not multiply timeouts.
+    let deadline = Instant::now() + TIMEOUT;
     let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port));
     let mut stream = TcpStream::connect_timeout(&address, TIMEOUT)?;
-    stream.set_read_timeout(Some(TIMEOUT))?;
-    stream.set_write_timeout(Some(TIMEOUT))?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err(io::Error::new(io::ErrorKind::TimedOut, "Kodi control deadline expired"));
+    }
+    stream.set_write_timeout(Some(remaining))?;
     stream.write_all(&payload)?;
 
-    let deadline = Instant::now() + TIMEOUT;
     let mut raw = Vec::with_capacity(4096);
     let mut buffer = [0u8; 4096];
     let mut announcements = 0usize;
