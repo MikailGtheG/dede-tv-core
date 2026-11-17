@@ -197,9 +197,9 @@ fn request_pvr_canonicalizes_leading_zeros_without_changing_saved_selection() {
     let preview = cli(&db, &["request-pvr", "00012"]);
     assert!(preview.status.success(), "{preview:?}");
     let json = String::from_utf8(preview.stdout).unwrap();
-    assert!(json.contains("\\"method\\":\\"Player.Open\\""), "{json}");
-    assert!(json.contains("\\"channelid\\":12"), "{json}");
-    assert!(!json.contains("\\"channelid\\":00012"), "{json}");
+    assert!(json.contains("\"method\":\"Player.Open\""), "{json}");
+    assert!(json.contains("\"channelid\":12"), "{json}");
+    assert!(!json.contains("\"channelid\":00012"), "{json}");
 
     let last = cli(&db, &["last"]);
     assert!(last.status.success(), "{last:?}");
