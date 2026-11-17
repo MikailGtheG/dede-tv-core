@@ -786,5 +786,4 @@ mod tests {
             _ => panic!("expected updated PVR source"),
         }
     }
-
 }
