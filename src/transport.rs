@@ -186,6 +186,32 @@ mod tests {
     }
 
     #[test]
+    fn rejects_excessive_unsolicited_announcements_before_acknowledgement() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = thread::spawn(move || {
+            let (mut client, _) = listener.accept().unwrap();
+            let mut input = [0u8; 256];
+            let _ = client.read(&mut input).unwrap();
+            let event = b"{\"jsonrpc\":\"2.0\",\"method\":\"Player.OnPlay\",\"params\":{}}";
+            for _ in 0..33 {
+                if client.write_all(event).is_err() {
+                    break;
+                }
+            }
+        });
+        let request = serde_json::json!({
+            "jsonrpc":"2.0","method":"Player.Open","id":7,
+            "params":{"item":{"channelid":1}}
+        });
+        assert_eq!(
+            send_to_loopback(port, &request).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn detects_mismatched_reply_identifier() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
