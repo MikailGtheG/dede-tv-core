@@ -47,14 +47,14 @@ fn removing_selected_virtual_channel_clears_boot_resume_state() {
 }
 
 #[test]
-fn removing_legacy_bare_selected_channel_clears_boot_resume_state() {
+fn removing_bare_selected_channel_clears_canonical_boot_resume_state() {
     let dir = tempdir().unwrap();
     let db = dir.path().join("channels.sqlite");
     assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
         .status
         .success());
     assert!(cli(&db, &["select", "News"]).status.success());
-    assert_eq!(cli(&db, &["last"]).stdout, b"News\n");
+    assert_eq!(cli(&db, &["last"]).stdout, b"virtual:News\n");
 
     assert!(cli(&db, &["remove", "News"]).status.success());
     assert_eq!(cli(&db, &["last"]).stdout, b"\n");
