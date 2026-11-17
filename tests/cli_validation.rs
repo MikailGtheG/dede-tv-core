@@ -166,7 +166,9 @@ fn resume_without_saved_channel_does_not_contact_kodi() {
 fn bare_and_prefixed_virtual_selection_persist_the_same_resume_identity() {
     let dir = tempdir().unwrap();
     let db = dir.path().join("channels.sqlite");
-    assert!(cli(&db, &["add", "News", "news.mp4", "1000"]).status.success());
+    assert!(cli(&db, &["add", "News", "news.mp4", "1000"])
+        .status
+        .success());
     for selection in ["News", "virtual:News"] {
         let selected = cli(&db, &["select", selection]);
         assert!(selected.status.success(), "{selected:?}");
