@@ -217,7 +217,7 @@ fn maximum_pvr_channel_id_is_accepted_and_persisted_canonically() {
     let json = String::from_utf8(preview.stdout).unwrap();
     assert!(json.contains("\"channelid\":4294967295"), "{json}");
 
-    let selected = cli(&db, &["select", "pvr:04294967295"]);
+    // A leading-zero preview must also serialize as a numeric Kodi channel ID.\n    let padded_preview = cli(&db, &["request-pvr", "04294967295"]);\n    assert!(padded_preview.status.success(), "{padded_preview:?}");\n    let padded_json = String::from_utf8(padded_preview.stdout).unwrap();\n    assert!(padded_json.contains("\\\"channelid\\\":4294967295"), "{padded_json}");\n    assert!(!padded_json.contains("\\\"channelid\\\":04294967295"), "{padded_json}");\n\n    let selected = cli(&db, &["select", "pvr:04294967295"]);
     assert!(selected.status.success(), "{selected:?}");
     let last = cli(&db, &["last"]);
     assert!(last.status.success(), "{last:?}");
