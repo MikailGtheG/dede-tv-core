@@ -37,7 +37,14 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     // just response reads. A stalled Kodi process must not multiply timeouts.
     let deadline = Instant::now() + TIMEOUT;
     let address = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, port));
-    let mut stream = TcpStream::connect_timeout(&address, TIMEOUT)?;
+    let connect_budget = deadline.saturating_duration_since(Instant::now());
+    if connect_budget.is_zero() {
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "Kodi control deadline expired",
+        ));
+    }
+    let mut stream = TcpStream::connect_timeout(&address, connect_budget)?;
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() {
         return Err(io::Error::new(
