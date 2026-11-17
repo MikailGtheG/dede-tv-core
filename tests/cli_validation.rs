@@ -215,16 +215,16 @@ fn maximum_pvr_channel_id_is_accepted_and_persisted_canonically() {
     let preview = cli(&db, &["request-pvr", "4294967295"]);
     assert!(preview.status.success(), "{preview:?}");
     let json = String::from_utf8(preview.stdout).unwrap();
-    assert!(json.contains("\\"channelid\\":4294967295"), "{json}");
+    assert!(json.contains("\"channelid\":4294967295"), "{json}");
 
     let selected = cli(&db, &["select", "pvr:04294967295"]);
     assert!(selected.status.success(), "{selected:?}");
     let last = cli(&db, &["last"]);
     assert!(last.status.success(), "{last:?}");
-    assert_eq!(last.stdout, b"pvr:4294967295\\n");
+    assert_eq!(last.stdout, b"pvr:4294967295\n");
 
     let rejected = cli(&db, &["select", "pvr:4294967296"]);
     assert!(!rejected.status.success(), "{rejected:?}");
     let last = cli(&db, &["last"]);
-    assert_eq!(last.stdout, b"pvr:4294967295\\n");
+    assert_eq!(last.stdout, b"pvr:4294967295\n");
 }
