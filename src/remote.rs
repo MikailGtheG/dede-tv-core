@@ -58,8 +58,9 @@ impl RemoteController {
             }
             (S::ChannelList, K::Up) => A::MoveSelection(-1),
             (S::ChannelList, K::Down) => A::MoveSelection(1),
-            (S::LiveTv, K::ChannelUp) => A::StepChannel(1),
-            (S::LiveTv, K::ChannelDown) => A::StepChannel(-1),
+            // Arrow keys also work on simple remotes without dedicated CH+/-.
+            (S::LiveTv, K::ChannelUp | K::Up) => A::StepChannel(1),
+            (S::LiveTv, K::ChannelDown | K::Down) => A::StepChannel(-1),
             (S::ChannelList, K::ChannelUp) => {
                 self.screen = S::LiveTv;
                 A::StepChannel(1)
@@ -68,7 +69,7 @@ impl RemoteController {
                 self.screen = S::LiveTv;
                 A::StepChannel(-1)
             }
-            (S::LiveTv, K::Up | K::Down | K::Back | K::Home | K::Menu | K::Unknown)
+            (S::LiveTv, K::Back | K::Home | K::Menu | K::Unknown)
             | (S::ChannelList, K::Menu | K::Unknown) => A::None,
         }
     }
@@ -142,6 +143,18 @@ mod tests {
             assert_eq!(controller.handle(key), Action::None);
             assert_eq!(controller.screen(), Screen::LiveTv);
         }
+    }
+    #[test]
+    fn live_tv_arrow_keys_step_channels_without_opening_kodi() {
+        let mut controller = RemoteController::default();
+        assert_eq!(controller.handle(RemoteKey::Up), Action::StepChannel(1));
+        assert_eq!(controller.screen(), Screen::LiveTv);
+        assert_eq!(controller.handle(RemoteKey::Down), Action::StepChannel(-1));
+        assert_eq!(controller.screen(), Screen::LiveTv);
+        assert_eq!(controller.handle(RemoteKey::Ok), Action::ShowChannels);
+        assert_eq!(controller.handle(RemoteKey::Up), Action::MoveSelection(-1));
+        assert_eq!(controller.handle(RemoteKey::Down), Action::MoveSelection(1));
+        assert_eq!(controller.screen(), Screen::ChannelList);
     }
     #[test]
     fn ok_selects_and_returns_to_video() {
