@@ -285,6 +285,33 @@ mod tests {
     }
 
     #[test]
+    fn live_tv_arrow_keys_tune_pvr_channels_without_persisting_unconfirmed_state() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(
+            vec![
+                ("TRT 1".into(), Source::Pvr(17)),
+                ("ATV".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        for (key, expected_name, expected_id) in [
+            (RemoteKey::Up, "ATV", 18),
+            (RemoteKey::Down, "TRT 1", 17),
+        ] {
+            match tv.handle(key, &db, 0).unwrap() {
+                TvEvent::Playback { channel, request } => {
+                    assert_eq!(channel, expected_name);
+                    assert_eq!(request["method"], "Player.Open");
+                    assert_eq!(request["params"]["item"]["channelid"], expected_id);
+                }
+                _ => panic!("expected arrow-key PVR playback"),
+            }
+            assert_eq!(tv.picker.screen(), crate::remote::Screen::LiveTv);
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
+    }
+
+    #[test]
     fn invalid_channel_step_restores_selection_and_keeps_live_tv() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(
