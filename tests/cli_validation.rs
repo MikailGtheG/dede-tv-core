@@ -186,3 +186,22 @@ fn bare_and_prefixed_virtual_selection_persist_the_same_resume_identity() {
         assert_eq!(last.stdout, b"virtual:News\n");
     }
 }
+
+#[test]
+fn request_pvr_canonicalizes_leading_zeros_without_changing_saved_selection() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+    assert!(cli(&db, &["select", "pvr:7"]).status.success());
+
+    // Previewing a channel must neither persist it nor send anything to Kodi.
+    let preview = cli(&db, &["request-pvr", "00012"]);
+    assert!(preview.status.success(), "{preview:?}");
+    let json = String::from_utf8(preview.stdout).unwrap();
+    assert!(json.contains("\\"method\\":\\"Player.Open\\""), "{json}");
+    assert!(json.contains("\\"channelid\\":12"), "{json}");
+    assert!(!json.contains("\\"channelid\\":00012"), "{json}");
+
+    let last = cli(&db, &["last"]);
+    assert!(last.status.success(), "{last:?}");
+    assert_eq!(last.stdout, b"pvr:7\n");
+}
