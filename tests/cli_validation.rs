@@ -205,3 +205,26 @@ fn request_pvr_canonicalizes_leading_zeros_without_changing_saved_selection() {
     assert!(last.status.success(), "{last:?}");
     assert_eq!(last.stdout, b"pvr:7\n");
 }
+
+#[test]
+fn maximum_pvr_channel_id_is_accepted_and_persisted_canonically() {
+    let dir = tempdir().unwrap();
+    let db = dir.path().join("channels.sqlite");
+
+    // u32::MAX is a valid Kodi PVR channel ID; one greater is rejected.
+    let preview = cli(&db, &["request-pvr", "4294967295"]);
+    assert!(preview.status.success(), "{preview:?}");
+    let json = String::from_utf8(preview.stdout).unwrap();
+    assert!(json.contains("\\"channelid\\":4294967295"), "{json}");
+
+    let selected = cli(&db, &["select", "pvr:04294967295"]);
+    assert!(selected.status.success(), "{selected:?}");
+    let last = cli(&db, &["last"]);
+    assert!(last.status.success(), "{last:?}");
+    assert_eq!(last.stdout, b"pvr:4294967295\\n");
+
+    let rejected = cli(&db, &["select", "pvr:4294967296"]);
+    assert!(!rejected.status.success(), "{rejected:?}");
+    let last = cli(&db, &["last"]);
+    assert_eq!(last.stdout, b"pvr:4294967295\\n");
+}
