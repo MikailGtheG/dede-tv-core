@@ -306,6 +306,7 @@ mod tests {
         );
         worker.join().unwrap();
     }
+
     #[test]
     fn rejects_reply_without_result() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -379,6 +380,7 @@ mod tests {
         );
         worker.join().unwrap();
     }
+
     #[test]
     fn rejects_reply_that_also_claims_to_be_a_notification() {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -401,5 +403,4 @@ mod tests {
         );
         worker.join().unwrap();
     }
-
 }
