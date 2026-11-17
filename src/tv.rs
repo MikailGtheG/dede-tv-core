@@ -432,6 +432,19 @@ mod tests {
     }
 
     #[test]
+    fn stale_pvr_ack_cannot_persist_removed_channel_after_catalog_refresh() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let mut tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        let request = kodi::open_pvr_channel(17, 1);
+        tv.replace_channels(vec![("ATV".into(), Source::Pvr(18))]);
+        assert!(tv.confirm_pvr_request(&db, "TRT 1", &request).is_err());
+        assert_eq!(db.last_channel().unwrap(), None);
+        let current = kodi::open_pvr_channel(18, 1);
+        tv.confirm_pvr_request(&db, "ATV", &current).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:18"));
+    }
+
+    #[test]
     fn stale_pvr_ack_cannot_persist_reassigned_channel_id() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
