@@ -139,10 +139,14 @@ fn run() -> Result<(), String> {
                     return Err(format!("Channel not found: {name:?}"));
                 }
             }
+            // Always persist a canonical virtual identity, including legacy
+            // bare-name CLI inputs. Resume still accepts old database entries.
+            let name = selected.strip_prefix("virtual:").unwrap_or(selected);
+            let canonical = format!("virtual:{name}");
             channels
-                .set_last_channel(selected)
+                .set_last_channel(&canonical)
                 .map_err(|e| format!("{e:?}"))?;
-            println!("Selected {:?}", selected);
+            println!("Selected {:?}", canonical);
         }
         "last" if params.is_empty() => {
             println!(
