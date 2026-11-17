@@ -40,7 +40,10 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     let mut stream = TcpStream::connect_timeout(&address, TIMEOUT)?;
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() {
-        return Err(io::Error::new(io::ErrorKind::TimedOut, "Kodi control deadline expired"));
+        return Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "Kodi control deadline expired",
+        ));
     }
     stream.set_write_timeout(Some(remaining))?;
     stream.write_all(&payload)?;
