@@ -294,10 +294,9 @@ mod tests {
             ],
             vec![],
         );
-        for (key, expected_name, expected_id) in [
-            (RemoteKey::Up, "ATV", 18),
-            (RemoteKey::Down, "TRT 1", 17),
-        ] {
+        for (key, expected_name, expected_id) in
+            [(RemoteKey::Up, "ATV", 18), (RemoteKey::Down, "TRT 1", 17)]
+        {
             match tv.handle(key, &db, 0).unwrap() {
                 TvEvent::Playback { channel, request } => {
                     assert_eq!(channel, expected_name);
