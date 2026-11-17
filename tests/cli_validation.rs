@@ -221,8 +221,14 @@ fn maximum_pvr_channel_id_is_accepted_and_persisted_canonically() {
     let padded_preview = cli(&db, &["request-pvr", "04294967295"]);
     assert!(padded_preview.status.success(), "{padded_preview:?}");
     let padded_json = String::from_utf8(padded_preview.stdout).unwrap();
-    assert!(padded_json.contains("\"channelid\":4294967295"), "{padded_json}");
-    assert!(!padded_json.contains("\"channelid\":04294967295"), "{padded_json}");
+    assert!(
+        padded_json.contains("\"channelid\":4294967295"),
+        "{padded_json}"
+    );
+    assert!(
+        !padded_json.contains("\"channelid\":04294967295"),
+        "{padded_json}"
+    );
 
     let selected = cli(&db, &["select", "pvr:04294967295"]);
     assert!(selected.status.success(), "{selected:?}");
