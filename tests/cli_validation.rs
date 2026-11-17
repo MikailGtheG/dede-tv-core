@@ -49,7 +49,16 @@ fn selection_rejects_missing_or_unresumable_channels_without_changing_last() {
         .success());
     assert!(cli(&db, &["select", "News"]).status.success());
 
-    for invalid in ["Missing", "virtual:Missing", "virtual:bad\nname", "pvr:0"] {
+    for invalid in [
+        "Missing",
+        "virtual:Missing",
+        "virtual:bad\nname",
+        "pvr:0",
+        "pvr:-1",
+        "pvr:+1",
+        "pvr:4294967296",
+        "pvr:not-a-number",
+    ] {
         let result = cli(&db, &["select", invalid]);
         assert!(
             !result.status.success(),
