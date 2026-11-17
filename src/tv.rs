@@ -514,6 +514,27 @@ mod tests {
     }
 
     #[test]
+    fn non_integer_pvr_channel_ids_never_persist_resume_state() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        let tv = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
+        let valid = kodi::open_pvr_channel(17, 1);
+        for invalid_id in [
+            serde_json::json!(-17),
+            serde_json::json!(17.0),
+            serde_json::json!("17"),
+            serde_json::json!(null),
+            serde_json::json!(4294967296_u64),
+        ] {
+            let mut request = valid.clone();
+            request["params"]["item"]["channelid"] = invalid_id;
+            assert!(tv.confirm_pvr_request(&db, "TRT 1", &request).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
+        tv.confirm_pvr_request(&db, "TRT 1", &valid).unwrap();
+        assert_eq!(db.last_channel().unwrap().as_deref(), Some("pvr:17"));
+    }
+
+    #[test]
     fn blank_channel_name_cannot_tune_or_persist() {
         let db = VirtualChannels::open(":memory:").unwrap();
         let mut tv = TvSession::new(vec![("   ".into(), Source::Pvr(17))], vec![]);
