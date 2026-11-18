@@ -233,7 +233,10 @@ mod tests {
             ],
             vec![],
         );
-        assert_eq!(tv.picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(
+            tv.picker.handle(RemoteKey::Ok),
+            PickerEvent::Show { selected: 0 }
+        );
         assert_eq!(
             tv.picker.handle(RemoteKey::Down),
             PickerEvent::SelectionChanged { selected: 1 }
