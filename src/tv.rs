@@ -47,12 +47,7 @@ impl TvSession {
             && self.picker.screen() == crate::remote::Screen::ChannelList
         {
             return PickerEvent::SelectionChanged {
-                selected: self
-                    .picker
-                    .channels()
-                    .iter()
-                    .position(|name| Some(name.as_str()) == self.picker.selected())
-                    .unwrap_or(0),
+                selected: self.picker.selected_index().unwrap_or(0),
             };
         }
         event
@@ -229,6 +224,38 @@ impl TvSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn source_refresh_preserves_second_duplicate_overlay_position() {
+        let mut tv = TvSession::new(
+            vec![
+                ("Same".into(), Source::Pvr(17)),
+                ("Same".into(), Source::Pvr(18)),
+            ],
+            vec![],
+        );
+        assert!(matches!(
+            tv.handle(RemoteKey::ChannelUp, &VirtualChannels::open(":memory:").unwrap(), 0),
+            Err(_)
+        ));
+        // The picker can track the second occurrence even though playback
+        // intentionally rejects ambiguous display names.
+        assert_eq!(tv.picker.selected_index(), Some(0));
+        let mut picker = ChannelPicker::new(vec!["Same".into(), "Same".into()], None);
+        assert_eq!(picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(
+            picker.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
+        tv.picker = picker;
+        assert_eq!(
+            tv.replace_channels(vec![
+                ("Same".into(), Source::Pvr(17)),
+                ("Same".into(), Source::Pvr(19)),
+            ]),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
+    }
+
     #[test]
     fn remote_ok_generates_kodi_playback_without_opening_menus() {
         let db = VirtualChannels::open(":memory:").unwrap();
