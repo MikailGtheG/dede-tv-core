@@ -7,6 +7,7 @@ pub struct ChannelPicker {
     remote: RemoteController,
     channels: Vec<String>,
     selected: usize,
+    selection_before_open: Option<usize>,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PickerEvent {
@@ -25,6 +26,7 @@ impl ChannelPicker {
             remote: RemoteController::default(),
             channels,
             selected,
+            selection_before_open: None,
         }
     }
     pub fn channels(&self) -> &[String] {
@@ -46,10 +48,18 @@ impl ChannelPicker {
         }
         let was_open = self.remote.screen() == crate::remote::Screen::ChannelList;
         match self.remote.handle(key) {
-            Action::ShowChannels => PickerEvent::Show {
-                selected: self.selected,
+            Action::ShowChannels => {
+                self.selection_before_open = Some(self.selected);
+                PickerEvent::Show {
+                    selected: self.selected,
+                }
+            }
+            Action::HideChannels => {
+                if let Some(previous) = self.selection_before_open.take() {
+                    self.selected = previous.min(self.channels.len().saturating_sub(1));
+                }
+                PickerEvent::Hide
             },
-            Action::HideChannels => PickerEvent::Hide,
             Action::MoveSelection(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
                 // A one-channel list has nowhere to move. Avoid emitting a
@@ -66,14 +76,18 @@ impl ChannelPicker {
                     selected: self.selected,
                 }
             }
-            Action::TuneSelected => self
-                .selected()
+            Action::TuneSelected => {
+                self.selection_before_open = None;
+                self.selected()
+
                 .map(|id| PickerEvent::Tune(id.to_owned()))
-                .unwrap_or(PickerEvent::Hide),
+                .unwrap_or(PickerEvent::Hide)
+            },
             Action::StepChannel(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
                 // With one channel, channel +/- must not restart playback.
                 if len == 1 {
+                    self.selection_before_open = None;
                     // The remote controller already closed the overlay.
                     // Hide it without restarting playback of the only channel.
                     return if was_open {
@@ -87,6 +101,7 @@ impl ChannelPicker {
                 } else {
                     self.selected = (self.selected + 1) % len;
                 }
+                self.selection_before_open = None;
                 PickerEvent::Tune(self.channels[self.selected].clone())
             }
             _ => PickerEvent::None,
@@ -126,6 +141,7 @@ impl ChannelPicker {
         // Never leave the controller in an unusable empty-list state.
         if self.channels.is_empty() {
             self.remote = RemoteController::default();
+            self.selection_before_open = None;
             return if was_open {
                 PickerEvent::Hide
             } else {
@@ -147,6 +163,15 @@ mod tests {
     use super::*;
     fn picker() -> ChannelPicker {
         ChannelPicker::new(vec!["TRT 1".into(), "Dede Film".into()], Some("TRT 1"))
+    }
+    #[test]
+    fn canceling_channel_browsing_restores_previous_channel_position() {
+        let mut p = picker();
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
+        assert_eq!(p.handle(RemoteKey::Back), PickerEvent::Hide);
+        assert_eq!(p.selected(), Some("TRT 1"));
+        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::Tune("Dede Film".into()));
     }
     #[test]
     fn ok_opens_picker_and_tunes_selected() {
