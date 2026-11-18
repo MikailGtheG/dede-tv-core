@@ -157,6 +157,37 @@ mod tests {
         assert_eq!(controller.screen(), Screen::ChannelList);
     }
     #[test]
+    fn remote_actions_are_limited_by_visible_screen() {
+        for screen in [Screen::LiveTv, Screen::ChannelList] {
+            for key in KEYS {
+                let mut controller = RemoteController { screen };
+                let action = controller.handle(key);
+                match screen {
+                    Screen::LiveTv => {
+                        assert!(matches!(
+                            action,
+                            Action::None | Action::ShowChannels | Action::StepChannel(_)
+                        ));
+                    }
+                    Screen::ChannelList => {
+                        assert!(matches!(
+                            action,
+                            Action::None
+                                | Action::HideChannels
+                                | Action::MoveSelection(_)
+                                | Action::TuneSelected
+                                | Action::StepChannel(_)
+                        ));
+                    }
+                }
+                if matches!(key, RemoteKey::Menu | RemoteKey::Unknown) {
+                    assert_eq!(action, Action::None);
+                    assert_eq!(controller.screen(), screen);
+                }
+            }
+        }
+    }
+    #[test]
     fn ok_selects_and_returns_to_video() {
         let mut controller = RemoteController::default();
         assert_eq!(controller.handle(RemoteKey::Ok), Action::ShowChannels);
