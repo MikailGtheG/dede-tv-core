@@ -1,6 +1,6 @@
 //! Regression: administrator catalog updates must never tune a channel by themselves.
 use dede_tv_core::{
-    picker::{PickerEvent},
+    picker::PickerEvent,
     remote::{RemoteKey, Screen},
     tv::{Source, TvEvent, TvSession},
     VirtualChannels,
