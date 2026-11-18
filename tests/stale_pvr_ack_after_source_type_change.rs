@@ -30,8 +30,7 @@ fn stale_pvr_ack_preserves_previously_confirmed_channel() {
         vec![],
     );
     let valid_request = kodi::open_pvr_channel(18, 1);
-    tv.confirm_pvr_request(&db, "ATV", &valid_request)
-        .unwrap();
+    tv.confirm_pvr_request(&db, "ATV", &valid_request).unwrap();
 
     let stale_request = kodi::open_pvr_channel(17, 2);
     tv.replace_channels(vec![
