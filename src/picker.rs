@@ -59,7 +59,7 @@ impl ChannelPicker {
                     self.selected = previous.min(self.channels.len().saturating_sub(1));
                 }
                 PickerEvent::Hide
-            },
+            }
             Action::MoveSelection(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
                 // A one-channel list has nowhere to move. Avoid emitting a
@@ -79,10 +79,9 @@ impl ChannelPicker {
             Action::TuneSelected => {
                 self.selection_before_open = None;
                 self.selected()
-
-                .map(|id| PickerEvent::Tune(id.to_owned()))
-                .unwrap_or(PickerEvent::Hide)
-            },
+                    .map(|id| PickerEvent::Tune(id.to_owned()))
+                    .unwrap_or(PickerEvent::Hide)
+            }
             Action::StepChannel(delta) if !self.channels.is_empty() => {
                 let len = self.channels.len();
                 // With one channel, channel +/- must not restart playback.
@@ -168,10 +167,16 @@ mod tests {
     fn canceling_channel_browsing_restores_previous_channel_position() {
         let mut p = picker();
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
-        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
         assert_eq!(p.handle(RemoteKey::Back), PickerEvent::Hide);
         assert_eq!(p.selected(), Some("TRT 1"));
-        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::Tune("Dede Film".into()));
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("Dede Film".into())
+        );
     }
     #[test]
     fn ok_opens_picker_and_tunes_selected() {
