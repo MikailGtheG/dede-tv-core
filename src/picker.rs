@@ -135,6 +135,30 @@ impl ChannelPicker {
                     .or_else(|| channels.iter().position(|candidate| candidate == name))
             })
             .unwrap_or_else(|| self.selected.min(channels.len().saturating_sub(1)));
+        // The cancel snapshot refers to the pre-refresh catalogue. Remap it
+        // by channel identity before replacing that catalogue, otherwise Back
+        // can jump to an unrelated channel after an administrator reorders it.
+        if let Some(before) = self.selection_before_open {
+            let original = self.channels.get(before);
+            let occurrence = original.map(|name| {
+                self.channels[..before]
+                    .iter()
+                    .filter(|candidate| *candidate == name)
+                    .count()
+            });
+            self.selection_before_open = original
+                .zip(occurrence)
+                .and_then(|(name, nth)| {
+                    channels
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, candidate)| *candidate == name)
+                        .nth(nth)
+                        .map(|(index, _)| index)
+                        .or_else(|| channels.iter().position(|candidate| candidate == name))
+                })
+                .or(Some(self.selected));
+        }
         self.channels = channels;
         // An administrator can remove the last channel while the picker is open.
         // Never leave the controller in an unusable empty-list state.
@@ -163,6 +187,22 @@ mod tests {
     fn picker() -> ChannelPicker {
         ChannelPicker::new(vec!["TRT 1".into(), "Dede Film".into()], Some("TRT 1"))
     }
+    #[test]
+    fn cancel_after_admin_reorder_restores_original_channel() {
+        let mut p = ChannelPicker::new(
+            vec!["TRT 1".into(), "ATV".into(), "Film".into()],
+            Some("ATV"),
+        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
+        p.replace_channels(vec!["ATV".into(), "TRT 1".into(), "Film".into()]);
+        assert_eq!(p.handle(RemoteKey::Back), PickerEvent::Hide);
+        assert_eq!(p.selected(), Some("ATV"));
+    }
+
     #[test]
     fn canceling_channel_browsing_restores_previous_channel_position() {
         let mut p = picker();
