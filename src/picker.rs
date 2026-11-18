@@ -204,6 +204,35 @@ mod tests {
     }
 
     #[test]
+    fn cancel_after_duplicate_reorder_restores_original_occurrence() {
+        let mut p = ChannelPicker::new(
+            vec!["Same".into(), "Other".into(), "Same".into(), "Last".into()],
+            Some("Other"),
+        );
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("Same".into())
+        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 2 });
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 3 }
+        );
+        assert_eq!(
+            p.replace_channels(vec![
+                "Same".into(),
+                "Same".into(),
+                "Last".into(),
+                "Other".into(),
+            ]),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
+        assert_eq!(p.handle(RemoteKey::Back), PickerEvent::Hide);
+        assert_eq!(p.selected(), Some("Same"));
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+    }
+
+    #[test]
     fn canceling_channel_browsing_restores_previous_channel_position() {
         let mut p = picker();
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
