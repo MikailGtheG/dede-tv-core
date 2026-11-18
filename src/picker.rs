@@ -32,6 +32,10 @@ impl ChannelPicker {
     pub fn channels(&self) -> &[String] {
         &self.channels
     }
+    /// Index of the highlighted channel, preserving duplicate-name occurrences.
+    pub fn selected_index(&self) -> Option<usize> {
+        (self.selected < self.channels.len()).then_some(self.selected)
+    }
     pub fn selected(&self) -> Option<&str> {
         self.channels.get(self.selected).map(String::as_str)
     }
