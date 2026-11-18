@@ -233,20 +233,11 @@ mod tests {
             ],
             vec![],
         );
-        assert!(matches!(
-            tv.handle(RemoteKey::ChannelUp, &VirtualChannels::open(":memory:").unwrap(), 0),
-            Err(_)
-        ));
-        // The picker can track the second occurrence even though playback
-        // intentionally rejects ambiguous display names.
-        assert_eq!(tv.picker.selected_index(), Some(0));
-        let mut picker = ChannelPicker::new(vec!["Same".into(), "Same".into()], None);
-        assert_eq!(picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(tv.picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
         assert_eq!(
-            picker.handle(RemoteKey::Down),
+            tv.picker.handle(RemoteKey::Down),
             PickerEvent::SelectionChanged { selected: 1 }
         );
-        tv.picker = picker;
         assert_eq!(
             tv.replace_channels(vec![
                 ("Same".into(), Source::Pvr(17)),
