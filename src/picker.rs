@@ -267,6 +267,31 @@ mod tests {
     }
 
     #[test]
+    fn home_after_multiple_catalogue_refreshes_restores_tuned_channel() {
+        let mut p = ChannelPicker::new(
+            vec!["TRT 1".into(), "ATV".into(), "Film".into()],
+            Some("ATV"),
+        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
+        assert_eq!(
+            p.replace_channels(vec!["Film".into(), "TRT 1".into(), "ATV".into()]),
+            PickerEvent::SelectionChanged { selected: 0 }
+        );
+        assert_eq!(
+            p.replace_channels(vec!["TRT 1".into(), "ATV".into(), "Film".into()]),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
+        assert_eq!(p.handle(RemoteKey::Home), PickerEvent::Hide);
+        assert_eq!(p.selected(), Some("ATV"));
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+    }
+
+    #[test]
     fn home_closes_picker_without_tuning_highlighted_channel() {
         let mut picker = ChannelPicker::new(
             vec!["TRT 1".into(), "ATV".into(), "Film".into()],
