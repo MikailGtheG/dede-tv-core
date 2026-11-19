@@ -237,6 +237,36 @@ mod tests {
     }
 
     #[test]
+    fn home_after_admin_reorder_restores_tuned_duplicate_occurrence() {
+        let mut p = ChannelPicker::new(
+            vec!["Same".into(), "Other".into(), "Same".into(), "Last".into()],
+            Some("Other"),
+        );
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("Same".into())
+        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 2 });
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 3 }
+        );
+        assert_eq!(
+            p.replace_channels(vec![
+                "Same".into(),
+                "Same".into(),
+                "Last".into(),
+                "Other".into(),
+            ]),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
+        assert_eq!(p.handle(RemoteKey::Home), PickerEvent::Hide);
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(p.selected(), Some("Same"));
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+    }
+
+    #[test]
     fn home_closes_picker_without_tuning_highlighted_channel() {
         let mut picker = ChannelPicker::new(
             vec!["TRT 1".into(), "ATV".into(), "Film".into()],
