@@ -29,10 +29,10 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     }
     // Do not forward caller-supplied Kodi options or additional JSON-RPC fields.
     // Only the core-owned item selector belongs on this control connection.
-    if request.as_object().map_or(true, |fields| fields.len() != 4)
+    if request.as_object().is_none_or(|fields| fields.len() != 4)
         || request["params"]
             .as_object()
-            .map_or(true, |fields| fields.len() != 1)
+            .is_none_or(|fields| fields.len() != 1)
     {
         return Err(invalid("unexpected Kodi playback request fields"));
     }
