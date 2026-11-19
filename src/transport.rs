@@ -49,15 +49,13 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     });
     let valid_file = item.as_object().is_some_and(|fields| {
         fields.len() == 1
-            && item["file"]
-                .as_str()
-                .is_some_and(|path| {
-                    path.starts_with('/')
-                        && !path.contains('\0')
-                        && path[1..]
-                            .split('/')
-                            .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
-                })
+            && item["file"].as_str().is_some_and(|path| {
+                path.starts_with('/')
+                    && !path.contains('\0')
+                    && path[1..]
+                        .split('/')
+                        .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+            })
     });
     if !valid_pvr && !valid_file {
         return Err(invalid("unsupported Kodi playback item"));
