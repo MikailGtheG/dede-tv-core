@@ -237,6 +237,20 @@ mod tests {
     }
 
     #[test]
+    fn home_closes_picker_without_tuning_highlighted_channel() {
+        let mut picker = ChannelPicker::new(
+            vec!["TRT 1".into(), "ATV".into(), "Film".into()],
+            Some("ATV"),
+        );
+        assert_eq!(picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+        assert_eq!(picker.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 2 });
+        assert_eq!(picker.handle(RemoteKey::Home), PickerEvent::Hide);
+        assert_eq!(picker.selected(), Some("ATV"));
+        assert_eq!(picker.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+    }
+
+    #[test]
     fn canceling_channel_browsing_restores_previous_channel_position() {
         let mut p = picker();
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
