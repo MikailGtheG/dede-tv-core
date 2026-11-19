@@ -242,12 +242,21 @@ mod tests {
             vec!["TRT 1".into(), "ATV".into(), "Film".into()],
             Some("ATV"),
         );
-        assert_eq!(picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
-        assert_eq!(picker.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 2 });
+        assert_eq!(
+            picker.handle(RemoteKey::Ok),
+            PickerEvent::Show { selected: 1 }
+        );
+        assert_eq!(
+            picker.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
         assert_eq!(picker.handle(RemoteKey::Home), PickerEvent::Hide);
         assert_eq!(picker.selected(), Some("ATV"));
         assert_eq!(picker.screen(), crate::remote::Screen::LiveTv);
-        assert_eq!(picker.handle(RemoteKey::Ok), PickerEvent::Show { selected: 1 });
+        assert_eq!(
+            picker.handle(RemoteKey::Ok),
+            PickerEvent::Show { selected: 1 }
+        );
     }
 
     #[test]
