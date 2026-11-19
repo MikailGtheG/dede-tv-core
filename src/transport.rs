@@ -6,6 +6,7 @@
 use serde_json::Value;
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
+use std::path::{Component, Path};
 use std::time::{Duration, Instant};
 
 pub const KODI_JSONRPC_PORT: u16 = 9090;
@@ -51,7 +52,13 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         fields.len() == 1
             && item["file"]
                 .as_str()
-                .is_some_and(|path| path.starts_with('/'))
+                .is_some_and(|path| {
+                    !path.contains('\0')
+                        && Path::new(path).is_absolute()
+                        && Path::new(path)
+                            .components()
+                            .all(|part| matches!(part, Component::RootDir | Component::Normal(_)))
+                })
     });
     if !valid_pvr && !valid_file {
         return Err(invalid("unsupported Kodi playback item"));
@@ -210,6 +217,9 @@ mod tests {
     fn rejects_arbitrary_player_open_items_before_connecting() {
         for item in [
             serde_json::json!({"file":"https://example.invalid/stream"}),
+            serde_json::json!({"file":"/srv/media/../private/movie.mkv"}),
+            serde_json::json!({"file":"/srv/media/./movie.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u0000.mkv"}),
             serde_json::json!({"channelid":-1}),
             serde_json::json!({"channelid":4294967296u64}),
             serde_json::json!({"channelid":1,"file":"/tmp/movie.mkv"}),
