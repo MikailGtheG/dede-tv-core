@@ -32,11 +32,15 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     let item = &request["params"]["item"];
     let valid_pvr = item.as_object().is_some_and(|fields| {
         fields.len() == 1
-            && item["channelid"].as_u64().is_some_and(|id| id <= u32::MAX as u64)
+            && item["channelid"]
+                .as_u64()
+                .is_some_and(|id| id <= u32::MAX as u64)
     });
     let valid_file = item.as_object().is_some_and(|fields| {
         fields.len() == 1
-            && item["file"].as_str().is_some_and(|path| path.starts_with('/'))
+            && item["file"]
+                .as_str()
+                .is_some_and(|path| path.starts_with('/'))
     });
     if !valid_pvr && !valid_file {
         return Err(invalid("unsupported Kodi playback item"));
