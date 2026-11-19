@@ -23,7 +23,9 @@ pub fn send_playback(request: &Value) -> io::Result<Value> {
 }
 
 fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
-    if request["jsonrpc"] != "2.0" || request["method"] != "Player.Open" || !request["id"].is_u64()
+    if request["jsonrpc"] != "2.0"
+        || request["method"] != "Player.Open"
+        || !request["id"].as_u64().is_some_and(|id| id > 0)
     {
         return Err(invalid("only identified Player.Open requests are allowed"));
     }
@@ -43,7 +45,7 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         fields.len() == 1
             && item["channelid"]
                 .as_u64()
-                .is_some_and(|id| id <= u32::MAX as u64)
+                .is_some_and(|id| id > 0 && id <= u32::MAX as u64)
     });
     let valid_file = item.as_object().is_some_and(|fields| {
         fields.len() == 1
@@ -178,6 +180,25 @@ mod tests {
         });
         assert_eq!(send_to_loopback(port, &request).unwrap()["result"], "OK");
         worker.join().unwrap();
+    }
+
+    #[test]
+    fn rejects_zero_request_and_channel_ids_before_connecting() {
+        for request in [
+            serde_json::json!({
+                "jsonrpc":"2.0", "method":"Player.Open", "id":0,
+                "params":{"item":{"channelid":1}}
+            }),
+            serde_json::json!({
+                "jsonrpc":"2.0", "method":"Player.Open", "id":7,
+                "params":{"item":{"channelid":0}}
+            }),
+        ] {
+            assert_eq!(
+                send_to_loopback(1, &request).unwrap_err().kind(),
+                io::ErrorKind::InvalidData
+            );
+        }
     }
 
     #[test]
