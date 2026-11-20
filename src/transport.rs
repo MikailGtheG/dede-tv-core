@@ -258,7 +258,7 @@ mod tests {
     fn rejects_oversized_request_before_connecting() {
         let request = serde_json::json!({
             "jsonrpc":"2.0", "method":"Player.Open", "id":7,
-            "params":{"item":{"file":"x".repeat(70_000)}}
+            "params":{"item":{"file":format!("/srv/media/{}", "x".repeat(70_000))}}
         });
         assert_eq!(
             send_to_loopback(1, &request).unwrap_err().kind(),
