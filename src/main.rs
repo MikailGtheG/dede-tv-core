@@ -45,7 +45,17 @@ fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
 fn validate_virtual_resume_name(name: &str) -> Result<(), &'static str> {
     if name.trim().is_empty()
         || name.len() > 92
-        || name.chars().any(char::is_control)
+        || name.chars().any(|c| {
+            c.is_control()
+                || matches!(
+                    c,
+                    '\u{202a}'..='\u{202e}'
+                        | '\u{2066}'..='\u{2069}'
+                        | '\u{200e}'
+                        | '\u{200f}'
+                        | '\u{061c}'
+                )
+        })
         || name.starts_with("pvr:")
         || name.starts_with("virtual:")
     {
@@ -246,6 +256,9 @@ mod tests {
             "A\nB".to_string(),
             "pvr:1".to_string(),
             "virtual:News".to_string(),
+            "TRT\u{202e}1".to_string(),
+            "ATV\u{2066}HD\u{2069}".to_string(),
+            "TV\u{200f}1".to_string(),
         ] {
             assert!(validate_virtual_resume_name(&invalid).is_err());
         }
