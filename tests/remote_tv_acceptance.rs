@@ -59,3 +59,37 @@ fn menu_and_unknown_remote_keys_never_request_kodi_or_admin() {
     }
     assert_eq!(db.last_channel().unwrap(), None);
 }
+
+#[test]
+fn home_cancels_channel_selection_without_tuning_or_opening_admin() {
+    let db = VirtualChannels::open(":memory:").unwrap();
+    let mut session = TvSession::new(
+        vec![
+            ("TRT 1".into(), Source::Pvr(17)),
+            ("ATV".into(), Source::Pvr(18)),
+        ],
+        vec![],
+    );
+    assert!(matches!(
+        session.handle(RemoteKey::Ok, &db, 0).unwrap(),
+        TvEvent::Picker(_)
+    ));
+    assert!(matches!(
+        session.handle(RemoteKey::Down, &db, 0).unwrap(),
+        TvEvent::Picker(_)
+    ));
+    assert!(matches!(
+        session.handle(RemoteKey::Home, &db, 0).unwrap(),
+        TvEvent::Picker(_)
+    ));
+    assert_eq!(session.picker.screen(), Screen::LiveTv);
+    assert_eq!(db.last_channel().unwrap(), None);
+    // HOME only dismisses the overlay; it must not tune the highlighted channel.
+    // Reopening the list must still use the TV-only picker.
+    assert!(matches!(
+        session.handle(RemoteKey::Ok, &db, 0).unwrap(),
+        TvEvent::Picker(_)
+    ));
+    assert_eq!(session.picker.screen(), Screen::ChannelList);
+    assert_eq!(db.last_channel().unwrap(), None);
+}
