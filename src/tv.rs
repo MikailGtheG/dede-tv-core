@@ -189,7 +189,7 @@ impl TvSession {
                     self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
                 }
-                if !valid_channel_label(name) {
+                if !valid_channel_label(&name) {
                     self.picker = previous_picker;
                     return Err(
                         "channel name must not be blank or contain control characters".into(),
