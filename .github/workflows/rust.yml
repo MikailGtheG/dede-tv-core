@@ -36,7 +36,13 @@ jobs:
           cargo run --locked --quiet -- --db "$directory/state.db" select "Dede Film"
           # Administrative writes must reject visually deceptive channel labels.
           # A rejected add must not alter the stored catalog or last selection.
-          spoofed_name=          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "virtual:Dede Film"
+          spoofed_name="$(printf 'TRT\\342\\200\\2561')"
+          if cargo run --locked --quiet -- --db "$directory/state.db" add "$spoofed_name" "$directory/film.mkv" 3600000; then
+            echo 'Bidi-spoofed channel was incorrectly accepted' >&2
+            exit 1
+          fi
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" list)" = "Dede Film"
+          test "$(cargo run --locked --quiet -- --db "$directory/state.db" last)" = "virtual:Dede Film"
           # Invalid selections must not poison next boot's persisted state.
           if cargo run --locked --quiet -- --db "$directory/state.db" select "Missing Channel"; then
             echo 'Missing channel was incorrectly accepted' >&2
