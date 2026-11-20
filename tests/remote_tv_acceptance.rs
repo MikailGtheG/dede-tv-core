@@ -43,12 +43,18 @@ fn menu_and_unknown_remote_keys_never_request_kodi_or_admin() {
     let db = VirtualChannels::open(":memory:").unwrap();
     let mut session = TvSession::new(vec![("TRT 1".into(), Source::Pvr(17))], vec![]);
     for key in [RemoteKey::Menu, RemoteKey::Unknown, RemoteKey::Home] {
-        assert!(matches!(session.handle(key, &db, 0).unwrap(), TvEvent::None));
+        assert!(matches!(
+            session.handle(key, &db, 0).unwrap(),
+            TvEvent::None
+        ));
         assert_eq!(session.picker.screen(), Screen::LiveTv);
     }
     session.handle(RemoteKey::Ok, &db, 0).unwrap();
     for key in [RemoteKey::Menu, RemoteKey::Unknown] {
-        assert!(matches!(session.handle(key, &db, 0).unwrap(), TvEvent::None));
+        assert!(matches!(
+            session.handle(key, &db, 0).unwrap(),
+            TvEvent::None
+        ));
         assert_eq!(session.picker.screen(), Screen::ChannelList);
     }
     assert_eq!(db.last_channel().unwrap(), None);
