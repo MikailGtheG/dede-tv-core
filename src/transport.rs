@@ -51,7 +51,7 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         fields.len() == 1
             && item["file"].as_str().is_some_and(|path| {
                 path.starts_with('/')
-                    && !path.contains('\0')
+                    && !path.chars().any(char::is_control)
                     && path[1..]
                         .split('/')
                         .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
@@ -217,6 +217,8 @@ mod tests {
             serde_json::json!({"file":"/srv/media/../private/movie.mkv"}),
             serde_json::json!({"file":"/srv/media/./movie.mkv"}),
             serde_json::json!({"file":"/srv/media/movie\0.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\nname.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\rname.mkv"}),
             serde_json::json!({"channelid":-1}),
             serde_json::json!({"channelid":4294967296u64}),
             serde_json::json!({"channelid":1,"file":"/tmp/movie.mkv"}),
