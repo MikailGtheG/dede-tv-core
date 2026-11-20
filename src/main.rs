@@ -54,6 +54,10 @@ fn validate_virtual_resume_name(name: &str) -> Result<(), &'static str> {
                         | '\u{200e}'
                         | '\u{200f}'
                         | '\u{061c}'
+                        | '\u{00ad}'
+                        | '\u{200b}'..='\u{200d}'
+                        | '\u{2060}'
+                        | '\u{feff}'
                 )
         })
         || name.starts_with("pvr:")
@@ -259,6 +263,8 @@ mod tests {
             "TRT\u{202e}1".to_string(),
             "ATV\u{2066}HD\u{2069}".to_string(),
             "TV\u{200f}1".to_string(),
+            "TRT\u{200b}1".to_string(),
+            "ATV\u{2060}HD".to_string(),
         ] {
             assert!(validate_virtual_resume_name(&invalid).is_err());
         }
