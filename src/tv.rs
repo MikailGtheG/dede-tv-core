@@ -248,7 +248,13 @@ mod tests {
     #[test]
     fn bidi_spoofed_channel_labels_cannot_tune_or_be_persisted() {
         let db = VirtualChannels::open(":memory:").unwrap();
-        for name in ["TRT\u{202e}1", "ATV\u{2066}HD\u{2069}", "TV\u{200f}1", "TRT\u{200b}1", "ATV\u{2060}HD"] {
+        for name in [
+            "TRT\u{202e}1",
+            "ATV\u{2066}HD\u{2069}",
+            "TV\u{200f}1",
+            "TRT\u{200b}1",
+            "ATV\u{2060}HD",
+        ] {
             let mut tv = TvSession::new(vec![(name.into(), Source::Pvr(17))], vec![]);
             assert!(matches!(
                 tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
