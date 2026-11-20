@@ -24,6 +24,11 @@ fn delayed_pvr_ack_cannot_persist_a_reassigned_channel() {
     assert!(tv.confirm_pvr_request(&db, "TRT 1", &old_request).is_err());
     assert_eq!(db.last_channel().unwrap(), None);
 
+    // A catalog refresh closes the old picker. Reopen it before OK tunes.
+    assert!(matches!(
+        tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+        TvEvent::Picker(_)
+    ));
     let new_request = match tv.handle(RemoteKey::Ok, &db, 0).unwrap() {
         TvEvent::Playback { request, .. } => request,
         _ => panic!("expected new PVR tune"),
