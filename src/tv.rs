@@ -8,6 +8,24 @@ use crate::{
 use serde_json::Value;
 use std::path::PathBuf;
 
+// Bidirectional formatting marks can visually impersonate another channel in
+// the TV picker even though the stored identity is different.
+fn valid_channel_label(name: &str) -> bool {
+    !name.trim().is_empty()
+        && name.len() <= 100
+        && !name.chars().any(|c| {
+            c.is_control()
+                || matches!(
+                    c,
+                    '\u{202a}'..='\u{202e}'
+                        | '\u{2066}'..='\u{2069}'
+                        | '\u{200e}'
+                        | '\u{200f}'
+                        | '\u{061c}'
+                )
+        })
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum Source {
     Pvr(u32),
@@ -65,7 +83,7 @@ impl TvSession {
         if matches.next().is_some() {
             return Err("ambiguous channel name".into());
         }
-        if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control) {
+        if !valid_channel_label(name) {
             return Err("channel name must not be blank or contain control characters".into());
         }
         if matches!(source, Source::Virtual)
@@ -171,7 +189,7 @@ impl TvSession {
                     self.picker = previous_picker;
                     return Err("ambiguous channel name".into());
                 }
-                if name.trim().is_empty() || name.len() > 100 || name.chars().any(char::is_control)
+                if !valid_channel_label(name)
                 {
                     self.picker = previous_picker;
                     return Err(
@@ -224,6 +242,20 @@ impl TvSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn bidi_spoofed_channel_labels_cannot_tune_or_be_persisted() {
+        let db = VirtualChannels::open(":memory:").unwrap();
+        for name in ["TRT\u202e1", "ATV\u2066HD\u2069", "TV\u200f1"] {
+            let mut tv = TvSession::new(vec![(name.into(), Source::Pvr(17))], vec![]);
+            assert!(matches!(
+                tv.handle(RemoteKey::Ok, &db, 0).unwrap(),
+                TvEvent::Picker(_)
+            ));
+            assert!(tv.handle(RemoteKey::Ok, &db, 0).is_err());
+            assert!(tv.confirm_playback(&db, name).is_err());
+            assert_eq!(db.last_channel().unwrap(), None);
+        }
+    }
     #[test]
     fn source_refresh_preserves_second_duplicate_overlay_position() {
         let mut tv = TvSession::new(
