@@ -99,10 +99,12 @@ impl ChannelPicker {
                         PickerEvent::None
                     };
                 }
+                // CH+/- steps from the tuned channel, not the overlay highlight.
+                let origin = self.selection_before_open.unwrap_or(self.selected);
                 if delta < 0 {
-                    self.selected = (self.selected + len - 1) % len;
+                    self.selected = (origin + len - 1) % len;
                 } else {
-                    self.selected = (self.selected + 1) % len;
+                    self.selected = (origin + 1) % len;
                 }
                 self.selection_before_open = None;
                 PickerEvent::Tune(self.channels[self.selected].clone())
@@ -424,6 +426,32 @@ mod tests {
             PickerEvent::Tune("TRT 1".into())
         );
         assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+    }
+
+    #[test]
+    fn channel_step_from_open_picker_ignores_unconfirmed_highlight() {
+        let mut p = ChannelPicker::new(
+            vec!["TRT 1".into(), "ATV".into(), "Film".into(), "News".into()],
+            Some("TRT 1"),
+        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
+        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 2 });
+        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::Tune("ATV".into()));
+        assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
+        assert_eq!(p.selected(), Some("ATV"));
+    }
+
+    #[test]
+    fn channel_down_from_open_picker_ignores_unconfirmed_highlight() {
+        let mut p = ChannelPicker::new(
+            vec!["TRT 1".into(), "ATV".into(), "Film".into()],
+            Some("TRT 1"),
+        );
+        assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
+        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
+        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::Tune("Film".into()));
+        assert_eq!(p.selected(), Some("Film"));
     }
 
     #[test]
