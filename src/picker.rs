@@ -458,7 +458,10 @@ mod tests {
             Some("TRT 1"),
         );
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
-        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
         assert_eq!(
             p.handle(RemoteKey::ChannelDown),
             PickerEvent::Tune("Film".into())
