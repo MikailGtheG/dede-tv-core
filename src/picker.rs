@@ -435,9 +435,18 @@ mod tests {
             Some("TRT 1"),
         );
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
-        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
-        assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 2 });
-        assert_eq!(p.handle(RemoteKey::ChannelUp), PickerEvent::Tune("ATV".into()));
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 1 }
+        );
+        assert_eq!(
+            p.handle(RemoteKey::Down),
+            PickerEvent::SelectionChanged { selected: 2 }
+        );
+        assert_eq!(
+            p.handle(RemoteKey::ChannelUp),
+            PickerEvent::Tune("ATV".into())
+        );
         assert_eq!(p.screen(), crate::remote::Screen::LiveTv);
         assert_eq!(p.selected(), Some("ATV"));
     }
@@ -450,7 +459,10 @@ mod tests {
         );
         assert_eq!(p.handle(RemoteKey::Ok), PickerEvent::Show { selected: 0 });
         assert_eq!(p.handle(RemoteKey::Down), PickerEvent::SelectionChanged { selected: 1 });
-        assert_eq!(p.handle(RemoteKey::ChannelDown), PickerEvent::Tune("Film".into()));
+        assert_eq!(
+            p.handle(RemoteKey::ChannelDown),
+            PickerEvent::Tune("Film".into())
+        );
         assert_eq!(p.selected(), Some("Film"));
     }
 
