@@ -72,8 +72,35 @@ impl VirtualChannels {
     /// Persist the selected live channel so startup can resume it.
     /// Values are logical channel identifiers; never use them as filesystem paths.
     pub fn set_last_channel(&self, channel: &str) -> Result<()> {
-        if channel.trim().is_empty() || channel.len() > 100 || channel.chars().any(char::is_control)
-        {
+        // Reject invalid resume identifiers at the public library boundary,
+        // not only in the CLI. Preserve valid legacy bare virtual names.
+        let valid = if let Some(id) = channel.strip_prefix("pvr:") {
+            !id.is_empty()
+                && id.bytes().all(|b| b.is_ascii_digit())
+                && id.parse::<u32>().is_ok_and(|n| n > 0)
+        } else {
+            let name = channel.strip_prefix("virtual:").unwrap_or(channel);
+            !name.trim().is_empty()
+                && name.len() <= 92
+                && !name.starts_with("pvr:")
+                && !name.starts_with("virtual:")
+                && !name.chars().any(|c| {
+                    c.is_control()
+                        || matches!(
+                            c,
+                            '\u{202a}'..='\u{202e}'
+                                | '\u{2066}'..='\u{2069}'
+                                | '\u{200e}'
+                                | '\u{200f}'
+                                | '\u{061c}'
+                                | '\u{00ad}'
+                                | '\u{200b}'..='\u{200d}'
+                                | '\u{2060}'
+                                | '\u{feff}'
+                        )
+                })
+        };
+        if !valid || channel.len() > 100 {
             return Err(ScheduleError::InvalidChannel);
         }
         self.db.execute(
@@ -294,6 +321,31 @@ mod tests {
             Err(ScheduleError::InvalidChannel)
         ));
         assert_eq!(s.last_channel().unwrap().as_deref(), Some("TRT 1"));
+    }
+
+    #[test]
+    fn saved_channel_rejects_unresumable_identifiers_without_overwriting_selection() {
+        let s = VirtualChannels::open(":memory:").unwrap();
+        s.set_last_channel("pvr:1").unwrap();
+        for invalid in [
+            "pvr:0",
+            "pvr:-1",
+            "pvr:4294967296",
+            "pvr:",
+            "virtual:",
+            "virtual:pvr:1",
+            "virtual:virtual:News",
+            "virtual:TRT\u{202e}1",
+            "virtual:TRT\u{200b}1",
+        ] {
+            assert!(matches!(
+                s.set_last_channel(invalid),
+                Err(ScheduleError::InvalidChannel)
+            ));
+            assert_eq!(s.last_channel().unwrap().as_deref(), Some("pvr:1"));
+        }
+        s.set_last_channel("virtual:TRT 1").unwrap();
+        s.set_last_channel("TRT 1").unwrap(); // legacy saved identity
     }
 
     #[test]
