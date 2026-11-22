@@ -100,7 +100,26 @@ impl VirtualChannels {
     pub fn set_channel(&mut self, name: &str, videos: &[Video], now_ms: u64) -> Result<()> {
         // Reserve space for the `virtual:` resume prefix in settings (100 bytes).
         // A channel that cannot be resumed must not be accepted for creation.
-        if name.trim().is_empty() || name.len() > 92 || name.chars().any(char::is_control) {
+        if name.trim().is_empty()
+            || name.len() > 92
+            || name.starts_with("pvr:")
+            || name.starts_with("virtual:")
+            || name.chars().any(|c| {
+                c.is_control()
+                    || matches!(
+                        c,
+                        '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{061c}'
+                            | '\u{00ad}'
+                            | '\u{200b}'..='\u{200d}'
+                            | '\u{2060}'
+                            | '\u{feff}'
+                    )
+            })
+        {
             return Err(ScheduleError::InvalidChannel);
         }
         if videos.is_empty()
@@ -336,7 +355,7 @@ mod tests {
             s.set_channel("", &[v("a", 100)], 0),
             Err(ScheduleError::InvalidChannel)
         ));
-        for invalid in ["   ", "bad\nname", &"x".repeat(93)] {
+        for invalid in ["   ", "bad\nname", "pvr:1", "virtual:News", "TRT\u{202e}1", "TV\u{200b}1", &"x".repeat(93)] {
             assert!(matches!(
                 s.set_channel(invalid, &[v("a", 100)], 0),
                 Err(ScheduleError::InvalidChannel)
