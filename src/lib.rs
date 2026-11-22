@@ -407,7 +407,15 @@ mod tests {
             s.set_channel("", &[v("a", 100)], 0),
             Err(ScheduleError::InvalidChannel)
         ));
-        for invalid in ["   ", "bad\nname", "pvr:1", "virtual:News", "TRT\u{202e}1", "TV\u{200b}1", &"x".repeat(93)] {
+        for invalid in [
+            "   ",
+            "bad\nname",
+            "pvr:1",
+            "virtual:News",
+            "TRT\u{202e}1",
+            "TV\u{200b}1",
+            &"x".repeat(93),
+        ] {
             assert!(matches!(
                 s.set_channel(invalid, &[v("a", 100)], 0),
                 Err(ScheduleError::InvalidChannel)
