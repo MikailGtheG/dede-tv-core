@@ -228,6 +228,10 @@ impl VirtualChannels {
     }
 
     pub fn current(&self, name: &str, now_ms: u64) -> Result<Playback> {
+        // Direct playback callers must not bypass the picker name validation.
+        if !valid_resume_channel(&format!("virtual:{name}")) {
+            return Err(ScheduleError::InvalidChannel);
+        }
         let row: Option<(String, i64, i64)> = self
             .db
             .query_row(
@@ -536,6 +540,25 @@ mod tests {
         .unwrap();
         assert!(matches!(
             s.list_channels(),
+            Err(ScheduleError::InvalidChannel)
+        ));
+    }
+
+    #[test]
+    fn direct_playback_rejects_corrupted_channel_names() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("News", &[v("news.mp4", 1000)], 0).unwrap();
+        s.db.execute(
+            "UPDATE channels SET name='bad' || char(10) || 'name' WHERE name='News'",
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("bad\nname", 500),
+            Err(ScheduleError::InvalidChannel)
+        ));
+        assert!(matches!(
+            s.current("virtual:News", 500),
             Err(ScheduleError::InvalidChannel)
         ));
     }
