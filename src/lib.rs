@@ -278,7 +278,9 @@ impl VirtualChannels {
                 return Ok(Playback {
                     path: video.path,
                     position_ms: position,
-                    next_transition_ms: now_ms.saturating_add(video.duration_ms - position),
+                    next_transition_ms: now_ms
+                        .max(start_ms as u64)
+                        .saturating_add(video.duration_ms - position),
                 });
             }
             position -= video.duration_ms;
@@ -405,6 +407,14 @@ mod tests {
         s.set_channel("A", &[v("a.mp4", 1000)], 100).unwrap();
         assert_eq!(s.current("A", 350).unwrap().position_ms, 250);
         assert_eq!(s.current("A", 900).unwrap().position_ms, 800);
+    }
+    #[test]
+    fn future_cycle_start_does_not_schedule_an_early_transition() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("A", &[v("a.mp4", 1000)], 5000).unwrap();
+        let playback = s.current("A", 4000).unwrap();
+        assert_eq!(playback.position_ms, 0);
+        assert_eq!(playback.next_transition_ms, 6000);
     }
     #[test]
     fn persists_across_restart() {
