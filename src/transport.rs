@@ -51,7 +51,21 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         fields.len() == 1
             && item["file"].as_str().is_some_and(|path| {
                 path.starts_with('/')
-                    && !path.chars().any(char::is_control)
+                    && !path.chars().any(|c| {
+                        c.is_control()
+                            || matches!(
+                                c,
+                                '\u{202a}'..='\u{202e}'
+                                    | '\u{2066}'..='\u{2069}'
+                                    | '\u{200e}'
+                                    | '\u{200f}'
+                                    | '\u{061c}'
+                                    | '\u{00ad}'
+                                    | '\u{200b}'..='\u{200d}'
+                                    | '\u{2060}'
+                                    | '\u{feff}'
+                            )
+                    })
                     && path[1..]
                         .split('/')
                         .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
@@ -219,6 +233,9 @@ mod tests {
             serde_json::json!({"file":"/srv/media/movie\0.mkv"}),
             serde_json::json!({"file":"/srv/media/movie\nname.mkv"}),
             serde_json::json!({"file":"/srv/media/movie\rname.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u{202e}gpj.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u{2066}hidden\u{2069}.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u{200b}name.mkv"}),
             serde_json::json!({"channelid":-1}),
             serde_json::json!({"channelid":4294967296u64}),
             serde_json::json!({"channelid":1,"file":"/tmp/movie.mkv"}),
