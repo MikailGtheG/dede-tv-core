@@ -408,6 +408,23 @@ mod tests {
     }
 
     #[test]
+    fn rejects_out_of_range_timestamps_without_overwriting_channel() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("Movies", &[v("original.mp4", 1000)], 100)
+            .unwrap();
+        assert!(matches!(
+            s.set_channel("Movies", &[v("replacement.mp4", 1000)], i64::MAX as u64 + 1),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert_eq!(s.current("Movies", 500).unwrap().path, "original.mp4");
+        assert!(matches!(
+            s.current("Movies", i64::MAX as u64 + 1),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert_eq!(s.current("Movies", 500).unwrap().position_ms, 400);
+    }
+
+    #[test]
     fn position_advances_while_tuned_away() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
         s.set_channel("A", &[v("a.mp4", 1000)], 100).unwrap();
