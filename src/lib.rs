@@ -153,7 +153,7 @@ impl VirtualChannels {
             || videos.len() > crate::media::MAX_MEDIA_FILES
             || videos
                 .iter()
-                .any(|v| v.path.is_empty() || v.path.len() > 4096 || v.duration_ms == 0)
+                .any(|v| v.path.is_empty() || v.path.len() > 4096 || v.path.contains('\0') || v.duration_ms == 0)
             || videos
                 .iter()
                 .map(|v| &v.path)
@@ -222,7 +222,7 @@ impl VirtualChannels {
         if videos.is_empty()
             || videos.len() > crate::media::MAX_MEDIA_FILES
             || videos.iter().any(|video| {
-                video.path.is_empty() || video.path.len() > 4096 || video.duration_ms == 0
+                video.path.is_empty() || video.path.len() > 4096 || video.path.contains('\0') || video.duration_ms == 0
             })
             || videos
                 .iter()
@@ -400,6 +400,27 @@ mod tests {
             Err(ScheduleError::InvalidPlaylist)
         ));
     }
+    #[test]
+    fn rejects_nul_in_media_path_before_persisting_or_playing() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        assert!(matches!(
+            s.set_channel("Movies", &[v("movie\0.mp4", 1000)], 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert!(s.list_channels().unwrap().is_empty());
+
+        s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
+        let corrupted = serde_json::to_string(&vec![v("movie\0.mp4", 1000)]).unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist=?1 WHERE name='Movies'",
+            [corrupted],
+        ).unwrap();
+        assert!(matches!(
+            s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+    }
+
     #[test]
     fn rejects_invalid_channel_data() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
