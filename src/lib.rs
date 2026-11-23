@@ -153,7 +153,12 @@ impl VirtualChannels {
             || videos.len() > crate::media::MAX_MEDIA_FILES
             || videos
                 .iter()
-                .any(|v| v.path.is_empty() || v.path.len() > 4096 || v.path.contains('\0') || v.duration_ms == 0)
+                .any(|v| {
+                    v.path.is_empty()
+                        || v.path.len() > 4096
+                        || v.path.contains('\0')
+                        || v.duration_ms == 0
+                })
             || videos
                 .iter()
                 .map(|v| &v.path)
@@ -222,7 +227,10 @@ impl VirtualChannels {
         if videos.is_empty()
             || videos.len() > crate::media::MAX_MEDIA_FILES
             || videos.iter().any(|video| {
-                video.path.is_empty() || video.path.len() > 4096 || video.path.contains('\0') || video.duration_ms == 0
+                video.path.is_empty()
+                    || video.path.len() > 4096
+                    || video.path.contains('\0')
+                    || video.duration_ms == 0
             })
             || videos
                 .iter()
@@ -414,7 +422,8 @@ mod tests {
         s.db.execute(
             "UPDATE channels SET playlist=?1 WHERE name='Movies'",
             [corrupted],
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(
             s.current("Movies", 500),
             Err(ScheduleError::InvalidPlaylist)
