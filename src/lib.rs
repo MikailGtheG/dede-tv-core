@@ -45,6 +45,36 @@ impl From<serde_json::Error> for ScheduleError {
 }
 pub type Result<T> = std::result::Result<T, ScheduleError>;
 
+fn valid_resume_channel(channel: &str) -> bool {
+    let valid = if let Some(id) = channel.strip_prefix("pvr:") {
+            !id.is_empty()
+                && id.bytes().all(|b| b.is_ascii_digit())
+                && id.parse::<u32>().is_ok_and(|n| n > 0)
+        } else {
+            let name = channel.strip_prefix("virtual:").unwrap_or(channel);
+            !name.trim().is_empty()
+                && name.len() <= 92
+                && !name.starts_with("pvr:")
+                && !name.starts_with("virtual:")
+                && !name.chars().any(|c| {
+                    c.is_control()
+                        || matches!(
+                            c,
+                            '\u{202a}'..='\u{202e}'
+                                | '\u{2066}'..='\u{2069}'
+                                | '\u{200e}'
+                                | '\u{200f}'
+                                | '\u{061c}'
+                                | '\u{00ad}'
+                                | '\u{200b}'..='\u{200d}'
+                                | '\u{2060}'
+                                | '\u{feff}'
+                        )
+                })
+        };
+    valid && channel.len() <= 100
+}
+
 pub struct VirtualChannels {
     db: Connection,
 }
@@ -74,33 +104,7 @@ impl VirtualChannels {
     pub fn set_last_channel(&self, channel: &str) -> Result<()> {
         // Reject invalid resume identifiers at the public library boundary,
         // not only in the CLI. Preserve valid legacy bare virtual names.
-        let valid = if let Some(id) = channel.strip_prefix("pvr:") {
-            !id.is_empty()
-                && id.bytes().all(|b| b.is_ascii_digit())
-                && id.parse::<u32>().is_ok_and(|n| n > 0)
-        } else {
-            let name = channel.strip_prefix("virtual:").unwrap_or(channel);
-            !name.trim().is_empty()
-                && name.len() <= 92
-                && !name.starts_with("pvr:")
-                && !name.starts_with("virtual:")
-                && !name.chars().any(|c| {
-                    c.is_control()
-                        || matches!(
-                            c,
-                            '\u{202a}'..='\u{202e}'
-                                | '\u{2066}'..='\u{2069}'
-                                | '\u{200e}'
-                                | '\u{200f}'
-                                | '\u{061c}'
-                                | '\u{00ad}'
-                                | '\u{200b}'..='\u{200d}'
-                                | '\u{2060}'
-                                | '\u{feff}'
-                        )
-                })
-        };
-        if !valid || channel.len() > 100 {
+        if !valid_resume_channel(channel) {
             return Err(ScheduleError::InvalidChannel);
         }
         self.db.execute(
@@ -121,6 +125,9 @@ impl VirtualChannels {
                 |row| row.get(0),
             )
             .optional()?;
+        if found.as_deref().is_some_and(|channel| !valid_resume_channel(channel)) {
+            return Err(ScheduleError::InvalidChannel);
+        }
         Ok(found)
     }
 
@@ -352,6 +359,24 @@ mod tests {
         }
         s.set_last_channel("virtual:TRT 1").unwrap();
         s.set_last_channel("TRT 1").unwrap(); // legacy saved identity
+    }
+
+    #[test]
+    fn corrupted_persisted_resume_identifier_is_rejected() {
+        let s = VirtualChannels::open(":memory:").unwrap();
+        s.set_last_channel("pvr:1").unwrap();
+        for invalid in ["pvr:0", "virtual:", "bad\nname", "virtual:TRT\u{202e}1"] {
+            s.db.execute(
+                "UPDATE settings SET value=?1 WHERE key='last_channel'",
+                [invalid],
+            ).unwrap();
+            assert!(matches!(s.last_channel(), Err(ScheduleError::InvalidChannel)));
+        }
+        s.db.execute(
+            "UPDATE settings SET value='virtual:TRT 1' WHERE key='last_channel'",
+            [],
+        ).unwrap();
+        assert_eq!(s.last_channel().unwrap().as_deref(), Some("virtual:TRT 1"));
     }
 
     #[test]
