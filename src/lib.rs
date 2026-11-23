@@ -215,6 +215,11 @@ impl VirtualChannels {
 
     /// Remove a local channel and clear its remembered selection atomically.
     pub fn remove_channel(&mut self, name: &str) -> Result<bool> {
+        // Apply the same identifier rules to deletion as creation and playback.
+        // An externally supplied invalid name must never mutate channel state.
+        if !valid_resume_channel(&format!("virtual:{name}")) {
+            return Err(ScheduleError::InvalidChannel);
+        }
         let tx = self.db.transaction()?;
         let changed = tx.execute("DELETE FROM channels WHERE name=?1", [name])?;
         if changed != 0 {
@@ -572,6 +577,21 @@ mod tests {
             s.current("virtual:News", 500),
             Err(ScheduleError::InvalidChannel)
         ));
+    }
+
+    #[test]
+    fn removal_rejects_invalid_names_without_changing_saved_selection() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("News", &[v("news.mp4", 1000)], 0).unwrap();
+        s.set_last_channel("virtual:News").unwrap();
+        for invalid in ["", "   ", "bad\nname", "pvr:1", "virtual:News"] {
+            assert!(matches!(
+                s.remove_channel(invalid),
+                Err(ScheduleError::InvalidChannel)
+            ));
+        }
+        assert_eq!(s.list_channels().unwrap(), vec!["News"]);
+        assert_eq!(s.last_channel().unwrap().as_deref(), Some("virtual:News"));
     }
 
     #[test]
