@@ -202,6 +202,14 @@ impl VirtualChannels {
         let names = stmt
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        // A database can be modified outside this API. Never expose invalid
+        // channel names to the TV picker or allow them to become resume IDs.
+        if names
+            .iter()
+            .any(|name| !valid_resume_channel(&format!("virtual:{name}")))
+        {
+            return Err(ScheduleError::InvalidChannel);
+        }
         Ok(names)
     }
 
@@ -517,6 +525,21 @@ mod tests {
             Err(ScheduleError::InvalidPlaylist)
         ));
     }
+    #[test]
+    fn externally_corrupted_channel_names_are_not_exposed_to_picker() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("News", &[v("news.mp4", 1000)], 0).unwrap();
+        s.db.execute(
+            "UPDATE channels SET name='bad' || char(10) || 'name' WHERE name='News'",
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.list_channels(),
+            Err(ScheduleError::InvalidChannel)
+        ));
+    }
+
     #[test]
     fn channel_listing_and_removal_persist() {
         let dir = tempdir().unwrap();
