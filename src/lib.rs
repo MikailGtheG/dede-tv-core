@@ -18,6 +18,16 @@ pub struct Video {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Slot {
+    pub path: String,
+    pub start_ms: u64,
+    pub end_ms: u64,
+}
+
+/// Upper bound for one EPG query, independent of the requested window.
+pub const MAX_SCHEDULE_SLOTS: usize = 5000;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Playback {
     pub path: String,
@@ -161,6 +171,64 @@ impl VirtualChannels {
     }
 
     pub fn current(&self, name: &str, now_ms: u64) -> Result<Playback> {
+        let (videos, start_ms, seed, total) = self.load(name)?;
+        if now_ms > i64::MAX as u64 {
+            return Err(ScheduleError::InvalidPlaylist);
+        }
+        let elapsed = now_ms.saturating_sub(start_ms);
+        let cycle = elapsed / total;
+        let mut position = elapsed % total;
+        let playlist = shuffle_cycle(&videos, seed, cycle);
+        for video in playlist {
+            if position < video.duration_ms {
+                return Ok(Playback {
+                    path: video.path,
+                    position_ms: position,
+                    next_transition_ms: now_ms.saturating_add(video.duration_ms - position),
+                });
+            }
+            position -= video.duration_ms;
+        }
+        Err(ScheduleError::InvalidPlaylist)
+    }
+
+    /// Programme items overlapping `[from_ms, until_ms)`, for the EPG.
+    /// Returns at most `MAX_SCHEDULE_SLOTS` items.
+    pub fn schedule(&self, name: &str, from_ms: u64, until_ms: u64) -> Result<Vec<Slot>> {
+        let (videos, start_ms, seed, total) = self.load(name)?;
+        if from_ms > until_ms || until_ms > i64::MAX as u64 {
+            return Err(ScheduleError::InvalidPlaylist);
+        }
+        let from_ms = from_ms.max(start_ms);
+        let mut slots = Vec::new();
+        if from_ms >= until_ms {
+            return Ok(slots);
+        }
+        let mut cycle = (from_ms - start_ms) / total;
+        let mut cycle_start = start_ms + cycle * total; // <= from_ms
+        while cycle_start < until_ms && slots.len() < MAX_SCHEDULE_SLOTS {
+            let mut item_start = cycle_start;
+            for video in shuffle_cycle(&videos, seed, cycle) {
+                let item_end = item_start.saturating_add(video.duration_ms);
+                if item_end > from_ms && item_start < until_ms {
+                    slots.push(Slot {
+                        path: video.path,
+                        start_ms: item_start,
+                        end_ms: item_end,
+                    });
+                    if slots.len() == MAX_SCHEDULE_SLOTS {
+                        break;
+                    }
+                }
+                item_start = item_end;
+            }
+            cycle += 1;
+            cycle_start = cycle_start.saturating_add(total);
+        }
+        Ok(slots)
+    }
+
+    fn load(&self, name: &str) -> Result<(Vec<Video>, u64, u64, u64)> {
         let row: Option<(String, i64, i64)> = self
             .db
             .query_row(
@@ -186,7 +254,6 @@ impl VirtualChannels {
                 != videos.len()
             || start_ms < 0
             || seed < 0
-            || now_ms > i64::MAX as u64
         {
             return Err(ScheduleError::InvalidPlaylist);
         }
@@ -195,21 +262,7 @@ impl VirtualChannels {
             .try_fold(0u64, |a, v| a.checked_add(v.duration_ms))
             .filter(|n| *n > 0)
             .ok_or(ScheduleError::InvalidPlaylist)?;
-        let elapsed = now_ms.saturating_sub(start_ms as u64);
-        let cycle = elapsed / total;
-        let mut position = elapsed % total;
-        let playlist = shuffle_cycle(&videos, seed as u64, cycle);
-        for video in playlist {
-            if position < video.duration_ms {
-                return Ok(Playback {
-                    path: video.path,
-                    position_ms: position,
-                    next_transition_ms: now_ms.saturating_add(video.duration_ms - position),
-                });
-            }
-            position -= video.duration_ms;
-        }
-        Err(ScheduleError::InvalidPlaylist)
+        Ok((videos, start_ms as u64, seed as u64, total))
     }
 }
 
@@ -432,5 +485,48 @@ mod tests {
                 s.current("A", cycle * 200).unwrap().path
             );
         }
+    }
+
+    #[test]
+    fn schedule_matches_current_playback() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        let videos = [
+            v("a.mp4", 700),
+            v("b.mp4", 1100),
+            v("c.mp4", 400),
+            v("d.mp4", 900),
+        ];
+        s.set_channel("A", &videos, 1_000).unwrap();
+        let slots = s.schedule("A", 5_000, 20_000).unwrap();
+        assert!(slots[0].start_ms <= 5_000 && slots[0].end_ms > 5_000);
+        assert!(slots.last().unwrap().end_ms >= 20_000);
+        for pair in slots.windows(2) {
+            assert_eq!(pair[0].end_ms, pair[1].start_ms);
+        }
+        for slot in &slots {
+            for t in [slot.start_ms.max(5_000), (slot.start_ms + slot.end_ms) / 2] {
+                let play = s.current("A", t).unwrap();
+                assert_eq!(play.path, slot.path);
+                assert_eq!(play.position_ms, t - slot.start_ms);
+            }
+        }
+    }
+
+    #[test]
+    fn schedule_starts_at_channel_creation_and_is_bounded() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("A", &[v("a.mp4", 1), v("b.mp4", 1)], 500)
+            .unwrap();
+        let slots = s.schedule("A", 0, 510).unwrap();
+        assert_eq!(slots.first().unwrap().start_ms, 500);
+        assert_eq!(slots.len(), 10);
+        let many = s.schedule("A", 0, u32::MAX as u64).unwrap();
+        assert_eq!(many.len(), MAX_SCHEDULE_SLOTS);
+        assert!(s.schedule("A", 0, 400).unwrap().is_empty());
+        assert!(s.schedule("A", 600, 500).is_err());
+        assert!(matches!(
+            s.schedule("B", 0, 1),
+            Err(ScheduleError::NotFound)
+        ));
     }
 }
