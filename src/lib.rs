@@ -47,31 +47,31 @@ pub type Result<T> = std::result::Result<T, ScheduleError>;
 
 fn valid_resume_channel(channel: &str) -> bool {
     let valid = if let Some(id) = channel.strip_prefix("pvr:") {
-            !id.is_empty()
-                && id.bytes().all(|b| b.is_ascii_digit())
-                && id.parse::<u32>().is_ok_and(|n| n > 0)
-        } else {
-            let name = channel.strip_prefix("virtual:").unwrap_or(channel);
-            !name.trim().is_empty()
-                && name.len() <= 92
-                && !name.starts_with("pvr:")
-                && !name.starts_with("virtual:")
-                && !name.chars().any(|c| {
-                    c.is_control()
-                        || matches!(
-                            c,
-                            '\u{202a}'..='\u{202e}'
-                                | '\u{2066}'..='\u{2069}'
-                                | '\u{200e}'
-                                | '\u{200f}'
-                                | '\u{061c}'
-                                | '\u{00ad}'
-                                | '\u{200b}'..='\u{200d}'
-                                | '\u{2060}'
-                                | '\u{feff}'
-                        )
-                })
-        };
+        !id.is_empty()
+            && id.bytes().all(|b| b.is_ascii_digit())
+            && id.parse::<u32>().is_ok_and(|n| n > 0)
+    } else {
+        let name = channel.strip_prefix("virtual:").unwrap_or(channel);
+        !name.trim().is_empty()
+            && name.len() <= 92
+            && !name.starts_with("pvr:")
+            && !name.starts_with("virtual:")
+            && !name.chars().any(|c| {
+                c.is_control()
+                    || matches!(
+                        c,
+                        '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{061c}'
+                            | '\u{00ad}'
+                            | '\u{200b}'..='\u{200d}'
+                            | '\u{2060}'
+                            | '\u{feff}'
+                    )
+            })
+    };
     valid && channel.len() <= 100
 }
 
@@ -125,7 +125,10 @@ impl VirtualChannels {
                 |row| row.get(0),
             )
             .optional()?;
-        if found.as_deref().is_some_and(|channel| !valid_resume_channel(channel)) {
+        if found
+            .as_deref()
+            .is_some_and(|channel| !valid_resume_channel(channel))
+        {
             return Err(ScheduleError::InvalidChannel);
         }
         Ok(found)
@@ -369,13 +372,18 @@ mod tests {
             s.db.execute(
                 "UPDATE settings SET value=?1 WHERE key='last_channel'",
                 [invalid],
-            ).unwrap();
-            assert!(matches!(s.last_channel(), Err(ScheduleError::InvalidChannel)));
+            )
+            .unwrap();
+            assert!(matches!(
+                s.last_channel(),
+                Err(ScheduleError::InvalidChannel)
+            ));
         }
         s.db.execute(
             "UPDATE settings SET value='virtual:TRT 1' WHERE key='last_channel'",
             [],
-        ).unwrap();
+        )
+        .unwrap();
         assert_eq!(s.last_channel().unwrap().as_deref(), Some("virtual:TRT 1"));
     }
 
