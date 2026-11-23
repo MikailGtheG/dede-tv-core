@@ -184,7 +184,9 @@ impl VirtualChannels {
                 return Ok(Playback {
                     path: video.path,
                     position_ms: position,
-                    next_transition_ms: now_ms.max(start_ms).saturating_add(video.duration_ms - position),
+                    next_transition_ms: now_ms
+                        .max(start_ms)
+                        .saturating_add(video.duration_ms - position),
                 });
             }
             position -= video.duration_ms;
@@ -490,8 +492,7 @@ mod tests {
     #[test]
     fn future_cycle_start_keeps_playback_and_epg_transition_aligned() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
-        s.set_channel("A", &[v("a.mp4", 1_000)], 5_000)
-            .unwrap();
+        s.set_channel("A", &[v("a.mp4", 1_000)], 5_000).unwrap();
         let play = s.current("A", 4_000).unwrap();
         let slots = s.schedule("A", 4_000, 7_000).unwrap();
         assert_eq!(play.position_ms, 0);
