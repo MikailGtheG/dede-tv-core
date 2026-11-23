@@ -151,14 +151,12 @@ impl VirtualChannels {
         }
         if videos.is_empty()
             || videos.len() > crate::media::MAX_MEDIA_FILES
-            || videos
-                .iter()
-                .any(|v| {
-                    v.path.is_empty()
-                        || v.path.len() > 4096
-                        || v.path.contains('\0')
-                        || v.duration_ms == 0
-                })
+            || videos.iter().any(|v| {
+                v.path.is_empty()
+                    || v.path.len() > 4096
+                    || v.path.contains('\0')
+                    || v.duration_ms == 0
+            })
             || videos
                 .iter()
                 .map(|v| &v.path)
