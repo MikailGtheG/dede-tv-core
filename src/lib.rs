@@ -241,7 +241,8 @@ impl VirtualChannels {
             )
             .optional()?;
         let (payload, start_ms, seed) = row.ok_or(ScheduleError::NotFound)?;
-        let videos: Vec<Video> = serde_json::from_str(&payload)?;
+        let videos: Vec<Video> =
+            serde_json::from_str(&payload).map_err(|_| ScheduleError::InvalidPlaylist)?;
         // Revalidate persisted playlists: SQLite can be edited externally.
         // Duplicate paths can violate shuffle_cycle's uniqueness invariant.
         if videos.is_empty()
@@ -593,6 +594,21 @@ mod tests {
         drop(s);
         let s = VirtualChannels::open(&db).unwrap();
         assert_eq!(s.list_channels().unwrap(), vec!["ZDF"]);
+    }
+
+    #[test]
+    fn corrupted_playlist_json_is_rejected_as_invalid_playlist() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist='not-json' WHERE name='Movies'",
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
     }
 
     #[test]
