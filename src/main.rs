@@ -21,6 +21,7 @@ fn usage() -> &'static str {
        select NAME\n\
        last\n\
        now NAME\n\
+       schedule NAME HOURS   (JSON programme list from now, at most 168 h)\n\
        request-pvr CHANNEL_ID\n\
        request-virtual NAME APPROVED_MEDIA_ROOT\n\
        play-pvr CHANNEL_ID\n\
@@ -76,6 +77,13 @@ fn parse_duration_ms(raw: &str) -> Result<u64, &'static str> {
     match raw.parse::<u64>() {
         Ok(ms) if ms > 0 => Ok(ms),
         _ => Err("duration must be a positive integer in milliseconds"),
+    }
+}
+
+fn parse_hours(raw: &str) -> Result<u64, &'static str> {
+    match raw.parse::<u64>() {
+        Ok(h) if (1..=168).contains(&h) && raw.bytes().all(|b| b.is_ascii_digit()) => Ok(h),
+        _ => Err("hours must be an integer from 1 to 168"),
     }
 }
 
@@ -177,6 +185,17 @@ fn run() -> Result<(), String> {
                 .map_err(|e| format!("{e:?}"))?;
             println!("{} @ {} ms", play.path, play.position_ms);
         }
+        "schedule" if params.len() == 2 => {
+            let hours = parse_hours(&params[1])?;
+            let now = now_ms()?;
+            let slots = channels
+                .schedule(&params[0], now, now.saturating_add(hours * 3_600_000))
+                .map_err(|e| format!("{e:?}"))?;
+            println!(
+                "{}",
+                serde_json::to_string(&slots).map_err(|e| e.to_string())?
+            );
+        }
         "request-pvr" if params.len() == 1 => {
             let id = parse_pvr_id(&params[0])?;
             println!("{}", kodi::open_pvr_channel(id, 1));
@@ -249,7 +268,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_duration_ms, parse_pvr_id, validate_virtual_resume_name};
+    use super::{parse_duration_ms, parse_hours, parse_pvr_id, validate_virtual_resume_name};
 
     #[test]
     fn virtual_playback_names_must_fit_persisted_resume_key() {
@@ -285,6 +304,14 @@ mod tests {
             "",
         ] {
             assert!(parse_duration_ms(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn schedule_hours_are_bounded() {
+        assert_eq!(parse_hours("48"), Ok(48));
+        for bad in ["0", "169", "+1", "", "1.5"] {
+            assert!(parse_hours(bad).is_err());
         }
     }
 

@@ -51,7 +51,21 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
         fields.len() == 1
             && item["file"].as_str().is_some_and(|path| {
                 path.starts_with('/')
-                    && !path.chars().any(char::is_control)
+                    && !path.chars().any(|c| {
+                        c.is_control()
+                            || matches!(
+                                c,
+                                '\u{202a}'..='\u{202e}'
+                                    | '\u{2066}'..='\u{2069}'
+                                    | '\u{200e}'
+                                    | '\u{200f}'
+                                    | '\u{061c}'
+                                    | '\u{00ad}'
+                                    | '\u{200b}'..='\u{200d}'
+                                    | '\u{2060}'
+                                    | '\u{feff}'
+                            )
+                    })
                     && path[1..]
                         .split('/')
                         .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
@@ -91,6 +105,9 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
     let mut raw = Vec::with_capacity(4096);
     let mut buffer = [0u8; 4096];
     let mut announcements = 0usize;
+    // Bound the entire reply stream, not just the unparsed tail: otherwise
+    // repeated valid announcements can each bypass the raw-buffer limit.
+    let mut total_response_bytes = 0usize;
     loop {
         // Kodi may send asynchronous announcements before the matching reply,
         // even as concatenated JSON documents with no separator.
@@ -156,7 +173,8 @@ fn send_to_loopback(port: u16, request: &Value) -> io::Result<Value> {
                 "Kodi closed connection without a complete reply",
             ));
         }
-        if raw.len().saturating_add(count) > MAX_RESPONSE_BYTES {
+        total_response_bytes = total_response_bytes.saturating_add(count);
+        if total_response_bytes > MAX_RESPONSE_BYTES {
             return Err(invalid("Kodi response exceeds size limit"));
         }
         raw.extend_from_slice(&buffer[..count]);
@@ -219,6 +237,9 @@ mod tests {
             serde_json::json!({"file":"/srv/media/movie\0.mkv"}),
             serde_json::json!({"file":"/srv/media/movie\nname.mkv"}),
             serde_json::json!({"file":"/srv/media/movie\rname.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u{202e}gpj.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u{2066}hidden\u{2069}.mkv"}),
+            serde_json::json!({"file":"/srv/media/movie\u{200b}name.mkv"}),
             serde_json::json!({"channelid":-1}),
             serde_json::json!({"channelid":4294967296u64}),
             serde_json::json!({"channelid":1,"file":"/tmp/movie.mkv"}),
@@ -500,6 +521,38 @@ mod tests {
                     break; // The client is expected to close on the size limit.
                 }
             }
+        });
+        let request = serde_json::json!({
+            "jsonrpc":"2.0","method":"Player.Open","id":7,
+            "params":{"item":{"channelid":1}}
+        });
+        assert_eq!(
+            send_to_loopback(port, &request).unwrap_err().kind(),
+            io::ErrorKind::InvalidData
+        );
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn rejects_cumulative_oversized_announcements_before_acknowledgement() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let worker = thread::spawn(move || {
+            let (mut client, _) = listener.accept().unwrap();
+            let mut input = [0u8; 256];
+            let _ = client.read(&mut input).unwrap();
+            let event = serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "Player.OnPlay",
+                "params": {"padding": "x".repeat(48 * 1024)}
+            })
+            .to_string();
+            for _ in 0..24 {
+                if client.write_all(event.as_bytes()).is_err() {
+                    break;
+                }
+            }
+            let _ = client.write_all(br#"{"jsonrpc":"2.0","id":7,"result":"OK"}"#);
         });
         let request = serde_json::json!({
             "jsonrpc":"2.0","method":"Player.Open","id":7,
