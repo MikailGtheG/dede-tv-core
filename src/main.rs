@@ -1,0 +1,326 @@
+//! Local administrative CLI for the Dede TV Core prototype.
+//! Intentionally no HTTP listener. Only trusted administrators may modify this SQLite DB.
+use dede_tv_core::{kodi, transport, Video, VirtualChannels};
+use std::env;
+use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn now_ms() -> Result<u64, String> {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| e.to_string())?;
+    u64::try_from(elapsed.as_millis()).map_err(|e| e.to_string())
+}
+
+fn usage() -> &'static str {
+    "Usage: dede-tv-core --db FILE COMMAND [ARGS]\n\
+     Commands:\n\
+       add NAME FILE DURATION_MS [FILE DURATION_MS ...]\n\
+       list\n\
+       remove NAME\n\
+       select NAME\n\
+       last\n\
+       now NAME\n\
+       schedule NAME HOURS   (JSON programme list from now, at most 168 h)\n\
+       request-pvr CHANNEL_ID\n\
+       request-virtual NAME APPROVED_MEDIA_ROOT\n\
+       play-pvr CHANNEL_ID\n\
+       resume-last APPROVED_MEDIA_ROOT\n\
+       play-virtual NAME APPROVED_MEDIA_ROOT\n\
+     Note: play-* contacts Kodi strictly on 127.0.0.1:9090."
+}
+
+// PVR channel IDs are one-based; zero must never reach Kodi or saved state.
+fn parse_pvr_id(raw: &str) -> Result<u32, &'static str> {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("invalid PVR channel ID");
+    }
+    match raw.parse::<u32>() {
+        Ok(id) if id != 0 => Ok(id),
+        _ => Err("invalid PVR channel ID"),
+    }
+}
+
+// Persisted virtual-channel keys include the eight-byte "virtual:" prefix.
+// Reject unpersistable names before sending a playback command to Kodi.
+fn validate_virtual_resume_name(name: &str) -> Result<(), &'static str> {
+    if name.trim().is_empty()
+        || name.len() > 92
+        || name.chars().any(|c| {
+            c.is_control()
+                || matches!(
+                    c,
+                    '\u{202a}'..='\u{202e}'
+                        | '\u{2066}'..='\u{2069}'
+                        | '\u{200e}'
+                        | '\u{200f}'
+                        | '\u{061c}'
+                        | '\u{00ad}'
+                        | '\u{200b}'..='\u{200d}'
+                        | '\u{2060}'
+                        | '\u{feff}'
+                )
+        })
+        || name.starts_with("pvr:")
+        || name.starts_with("virtual:")
+    {
+        return Err("invalid virtual channel name for boot resume");
+    }
+    Ok(())
+}
+
+// Zero-length videos cannot advance a deterministic playlist.
+fn parse_duration_ms(raw: &str) -> Result<u64, &'static str> {
+    if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("duration must be a positive integer in milliseconds");
+    }
+    match raw.parse::<u64>() {
+        Ok(ms) if ms > 0 => Ok(ms),
+        _ => Err("duration must be a positive integer in milliseconds"),
+    }
+}
+
+fn parse_hours(raw: &str) -> Result<u64, &'static str> {
+    match raw.parse::<u64>() {
+        Ok(h) if (1..=168).contains(&h) && raw.bytes().all(|b| b.is_ascii_digit()) => Ok(h),
+        _ => Err("hours must be an integer from 1 to 168"),
+    }
+}
+
+// Debian 13's Rust compiler predates is_multiple_of and as_chunks.
+// Keep these two portable equivalents despite newer Clippy suggestions.
+#[allow(clippy::manual_is_multiple_of, clippy::chunks_exact_to_as_chunks)]
+fn run() -> Result<(), String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    if args.len() < 3 || args[0] != "--db" || args[1].is_empty() {
+        return Err(usage().to_string());
+    }
+    let database = PathBuf::from(&args[1]);
+    let command = args[2].as_str();
+    let params = &args[3..];
+    let mut channels = VirtualChannels::open(&database).map_err(|e| format!("{e:?}"))?;
+    match command {
+        "add" => {
+            if params.len() < 3 || params.len() % 2 == 0 {
+                return Err(usage().to_string());
+            }
+            let name = &params[0];
+            // A channel must be resumable before it can be added to the database.
+            validate_virtual_resume_name(name)?;
+            let videos = params[1..]
+                .chunks_exact(2)
+                .map(|pair| {
+                    let ms = parse_duration_ms(&pair[1])?;
+                    Ok(Video {
+                        path: pair[0].clone(),
+                        duration_ms: ms,
+                    })
+                })
+                .collect::<Result<Vec<_>, &str>>()?;
+            channels
+                .set_channel(name, &videos, now_ms()?)
+                .map_err(|e| format!("{e:?}"))?;
+            println!("Added {} videos to channel {:?}", videos.len(), name);
+        }
+        "list" if params.is_empty() => {
+            for name in channels.list_channels().map_err(|e| format!("{e:?}"))? {
+                println!("{name}");
+            }
+        }
+        "remove" if params.len() == 1 => {
+            let removed = channels
+                .remove_channel(&params[0])
+                .map_err(|e| format!("{e:?}"))?;
+            if !removed {
+                return Err(format!("Channel not found: {:?}", params[0]));
+            }
+            println!("Removed {:?}", params[0]);
+        }
+        "select" if params.len() == 1 => {
+            // Never persist a target that boot-resume cannot resolve.
+            // Bare names are retained for compatibility with early databases.
+            let selected = &params[0];
+            if let Some(id) = selected.strip_prefix("pvr:") {
+                let id = parse_pvr_id(id)?;
+                // Canonicalize leading zeros so the saved channel identity is stable.
+                channels
+                    .set_last_channel(&format!("pvr:{id}"))
+                    .map_err(|e| format!("{e:?}"))?;
+                println!("Selected \"pvr:{id}\"");
+                return Ok(());
+            } else {
+                let name = selected.strip_prefix("virtual:").unwrap_or(selected);
+                // Legacy databases may contain names that cannot fit the resume key.
+                validate_virtual_resume_name(name)?;
+                if !channels
+                    .list_channels()
+                    .map_err(|e| format!("{e:?}"))?
+                    .iter()
+                    .any(|existing| existing == name)
+                {
+                    return Err(format!("Channel not found: {name:?}"));
+                }
+            }
+            // Always persist a canonical virtual identity, including legacy
+            // bare-name CLI inputs. Resume still accepts old database entries.
+            let name = selected.strip_prefix("virtual:").unwrap_or(selected);
+            let canonical = format!("virtual:{name}");
+            channels
+                .set_last_channel(&canonical)
+                .map_err(|e| format!("{e:?}"))?;
+            println!("Selected {:?}", canonical);
+        }
+        "last" if params.is_empty() => {
+            println!(
+                "{}",
+                channels
+                    .last_channel()
+                    .map_err(|e| format!("{e:?}"))?
+                    .unwrap_or_default()
+            );
+        }
+        "now" if params.len() == 1 => {
+            let play = channels
+                .current(&params[0], now_ms()?)
+                .map_err(|e| format!("{e:?}"))?;
+            println!("{} @ {} ms", play.path, play.position_ms);
+        }
+        "schedule" if params.len() == 2 => {
+            let hours = parse_hours(&params[1])?;
+            let now = now_ms()?;
+            let slots = channels
+                .schedule(&params[0], now, now.saturating_add(hours * 3_600_000))
+                .map_err(|e| format!("{e:?}"))?;
+            println!(
+                "{}",
+                serde_json::to_string(&slots).map_err(|e| e.to_string())?
+            );
+        }
+        "request-pvr" if params.len() == 1 => {
+            let id = parse_pvr_id(&params[0])?;
+            println!("{}", kodi::open_pvr_channel(id, 1));
+        }
+        "request-virtual" if params.len() == 2 => {
+            // Keep the dry-run request path consistent with actual playback.
+            // Invalid legacy names must not produce a usable Kodi request.
+            validate_virtual_resume_name(&params[0])?;
+            let play = channels
+                .current(&params[0], now_ms()?)
+                .map_err(|e| format!("{e:?}"))?;
+            let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
+                .map_err(|e| format!("{e:?}"))?;
+            println!("{request}");
+        }
+        "resume-last" if params.len() == 1 => {
+            if let Some(last) = channels.last_channel().map_err(|e| format!("{e:?}"))? {
+                let request = if let Some(id) = last.strip_prefix("pvr:") {
+                    let id = parse_pvr_id(id).map_err(|_| "invalid saved PVR channel ID")?;
+                    kodi::open_pvr_channel(id, 1)
+                } else {
+                    let name = last.strip_prefix("virtual:").unwrap_or(&last);
+                    // Reject invalid legacy resume names before contacting Kodi.
+                    validate_virtual_resume_name(name)?;
+                    let play = channels
+                        .current(name, now_ms()?)
+                        .map_err(|e| format!("{e:?}"))?;
+                    kodi::open_virtual_channel(&play, &[PathBuf::from(&params[0])], 1)
+                        .map_err(|e| format!("{e:?}"))?
+                };
+                let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+                println!("{reply}");
+            } else {
+                println!("No last channel stored");
+            }
+        }
+        "play-pvr" if params.len() == 1 => {
+            let id = parse_pvr_id(&params[0])?;
+            let request = kodi::open_pvr_channel(id, 1);
+            let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+            channels
+                .set_last_channel(&format!("pvr:{id}"))
+                .map_err(|e| format!("{e:?}"))?;
+            println!("{reply}");
+        }
+        "play-virtual" if params.len() == 2 => {
+            validate_virtual_resume_name(&params[0])?;
+            let play = channels
+                .current(&params[0], now_ms()?)
+                .map_err(|e| format!("{e:?}"))?;
+            let request = kodi::open_virtual_channel(&play, &[PathBuf::from(&params[1])], 1)
+                .map_err(|e| format!("{e:?}"))?;
+            let reply = transport::send_playback(&request).map_err(|e| e.to_string())?;
+            channels
+                .set_last_channel(&format!("virtual:{}", params[0]))
+                .map_err(|e| format!("{e:?}"))?;
+            println!("{reply}");
+        }
+        _ => return Err(usage().to_string()),
+    }
+    Ok(())
+}
+
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("{e}");
+        std::process::exit(2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_duration_ms, parse_hours, parse_pvr_id, validate_virtual_resume_name};
+
+    #[test]
+    fn virtual_playback_names_must_fit_persisted_resume_key() {
+        assert!(validate_virtual_resume_name(&"é".repeat(46)).is_ok());
+        for invalid in [
+            "é".repeat(47),
+            " ".to_string(),
+            "A\nB".to_string(),
+            "pvr:1".to_string(),
+            "virtual:News".to_string(),
+            "TRT\u{202e}1".to_string(),
+            "ATV\u{2066}HD\u{2069}".to_string(),
+            "TV\u{200f}1".to_string(),
+            "TRT\u{200b}1".to_string(),
+            "ATV\u{2060}HD".to_string(),
+        ] {
+            assert!(validate_virtual_resume_name(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn video_durations_must_be_positive() {
+        assert_eq!(parse_duration_ms("1"), Ok(1));
+        assert_eq!(parse_duration_ms("18446744073709551615"), Ok(u64::MAX));
+        for invalid in [
+            "0",
+            "-1",
+            "+1",
+            " 1",
+            "1 ",
+            "abc",
+            "18446744073709551616",
+            "",
+        ] {
+            assert!(parse_duration_ms(invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn schedule_hours_are_bounded() {
+        assert_eq!(parse_hours("48"), Ok(48));
+        for bad in ["0", "169", "+1", "", "1.5"] {
+            assert!(parse_hours(bad).is_err());
+        }
+    }
+
+    #[test]
+    fn pvr_ids_reject_zero_and_invalid_values() {
+        assert_eq!(parse_pvr_id("1"), Ok(1));
+        assert_eq!(parse_pvr_id("4294967295"), Ok(u32::MAX));
+        for invalid in ["0", "-1", "+1", " 1", "1 ", "abc", "4294967296", ""] {
+            assert!(parse_pvr_id(invalid).is_err());
+        }
+    }
+}
