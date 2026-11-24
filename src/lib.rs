@@ -55,6 +55,36 @@ impl From<serde_json::Error> for ScheduleError {
 }
 pub type Result<T> = std::result::Result<T, ScheduleError>;
 
+fn valid_resume_channel(channel: &str) -> bool {
+    let valid = if let Some(id) = channel.strip_prefix("pvr:") {
+        !id.is_empty()
+            && id.bytes().all(|b| b.is_ascii_digit())
+            && id.parse::<u32>().is_ok_and(|n| n > 0)
+    } else {
+        let name = channel.strip_prefix("virtual:").unwrap_or(channel);
+        !name.trim().is_empty()
+            && name.len() <= 92
+            && !name.starts_with("pvr:")
+            && !name.starts_with("virtual:")
+            && !name.chars().any(|c| {
+                c.is_control()
+                    || matches!(
+                        c,
+                        '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{061c}'
+                            | '\u{00ad}'
+                            | '\u{200b}'..='\u{200d}'
+                            | '\u{2060}'
+                            | '\u{feff}'
+                    )
+            })
+    };
+    valid && channel.len() <= 100
+}
+
 pub struct VirtualChannels {
     db: Connection,
 }
@@ -82,8 +112,9 @@ impl VirtualChannels {
     /// Persist the selected live channel so startup can resume it.
     /// Values are logical channel identifiers; never use them as filesystem paths.
     pub fn set_last_channel(&self, channel: &str) -> Result<()> {
-        if channel.trim().is_empty() || channel.len() > 100 || channel.chars().any(char::is_control)
-        {
+        // Reject invalid resume identifiers at the public library boundary,
+        // not only in the CLI. Preserve valid legacy bare virtual names.
+        if !valid_resume_channel(channel) {
             return Err(ScheduleError::InvalidChannel);
         }
         self.db.execute(
@@ -104,20 +135,48 @@ impl VirtualChannels {
                 |row| row.get(0),
             )
             .optional()?;
+        if found
+            .as_deref()
+            .is_some_and(|channel| !valid_resume_channel(channel))
+        {
+            return Err(ScheduleError::InvalidChannel);
+        }
         Ok(found)
     }
 
     pub fn set_channel(&mut self, name: &str, videos: &[Video], now_ms: u64) -> Result<()> {
         // Reserve space for the `virtual:` resume prefix in settings (100 bytes).
         // A channel that cannot be resumed must not be accepted for creation.
-        if name.trim().is_empty() || name.len() > 92 || name.chars().any(char::is_control) {
+        if name.trim().is_empty()
+            || name.len() > 92
+            || name.starts_with("pvr:")
+            || name.starts_with("virtual:")
+            || name.chars().any(|c| {
+                c.is_control()
+                    || matches!(
+                        c,
+                        '\u{202a}'..='\u{202e}'
+                            | '\u{2066}'..='\u{2069}'
+                            | '\u{200e}'
+                            | '\u{200f}'
+                            | '\u{061c}'
+                            | '\u{00ad}'
+                            | '\u{200b}'..='\u{200d}'
+                            | '\u{2060}'
+                            | '\u{feff}'
+                    )
+            })
+        {
             return Err(ScheduleError::InvalidChannel);
         }
         if videos.is_empty()
             || videos.len() > crate::media::MAX_MEDIA_FILES
-            || videos
-                .iter()
-                .any(|v| v.path.is_empty() || v.path.len() > 4096 || v.duration_ms == 0)
+            || videos.iter().any(|v| {
+                v.path.trim().is_empty()
+                    || v.path.len() > 4096
+                    || v.path.contains('\0')
+                    || v.duration_ms == 0
+            })
             || videos
                 .iter()
                 .map(|v| &v.path)
@@ -153,11 +212,24 @@ impl VirtualChannels {
         let names = stmt
             .query_map([], |row| row.get::<_, String>(0))?
             .collect::<std::result::Result<Vec<_>, _>>()?;
+        // A database can be modified outside this API. Never expose invalid
+        // channel names to the TV picker or allow them to become resume IDs.
+        if names
+            .iter()
+            .any(|name| !valid_resume_channel(&format!("virtual:{name}")))
+        {
+            return Err(ScheduleError::InvalidChannel);
+        }
         Ok(names)
     }
 
     /// Remove a local channel and clear its remembered selection atomically.
     pub fn remove_channel(&mut self, name: &str) -> Result<bool> {
+        // Apply the same identifier rules to deletion as creation and playback.
+        // An externally supplied invalid name must never mutate channel state.
+        if !valid_resume_channel(&format!("virtual:{name}")) {
+            return Err(ScheduleError::InvalidChannel);
+        }
         let tx = self.db.transaction()?;
         let changed = tx.execute("DELETE FROM channels WHERE name=?1", [name])?;
         if changed != 0 {
@@ -231,6 +303,10 @@ impl VirtualChannels {
     }
 
     fn load(&self, name: &str) -> Result<(Vec<Video>, u64, u64, u64)> {
+        // Direct playback and EPG callers must not bypass the picker name validation.
+        if !valid_resume_channel(&format!("virtual:{name}")) {
+            return Err(ScheduleError::InvalidChannel);
+        }
         let row: Option<(String, i64, i64)> = self
             .db
             .query_row(
@@ -240,13 +316,17 @@ impl VirtualChannels {
             )
             .optional()?;
         let (payload, start_ms, seed) = row.ok_or(ScheduleError::NotFound)?;
-        let videos: Vec<Video> = serde_json::from_str(&payload)?;
+        let videos: Vec<Video> =
+            serde_json::from_str(&payload).map_err(|_| ScheduleError::InvalidPlaylist)?;
         // Revalidate persisted playlists: SQLite can be edited externally.
         // Duplicate paths can violate shuffle_cycle's uniqueness invariant.
         if videos.is_empty()
             || videos.len() > crate::media::MAX_MEDIA_FILES
             || videos.iter().any(|video| {
-                video.path.is_empty() || video.path.len() > 4096 || video.duration_ms == 0
+                video.path.trim().is_empty()
+                    || video.path.len() > 4096
+                    || video.path.contains('\0')
+                    || video.duration_ms == 0
             })
             || videos
                 .iter()
@@ -333,11 +413,84 @@ mod tests {
     }
 
     #[test]
+    fn saved_channel_rejects_unresumable_identifiers_without_overwriting_selection() {
+        let s = VirtualChannels::open(":memory:").unwrap();
+        s.set_last_channel("pvr:1").unwrap();
+        for invalid in [
+            "pvr:0",
+            "pvr:-1",
+            "pvr:4294967296",
+            "pvr:",
+            "virtual:",
+            "virtual:pvr:1",
+            "virtual:virtual:News",
+            "virtual:TRT\u{202e}1",
+            "virtual:TRT\u{200b}1",
+        ] {
+            assert!(matches!(
+                s.set_last_channel(invalid),
+                Err(ScheduleError::InvalidChannel)
+            ));
+            assert_eq!(s.last_channel().unwrap().as_deref(), Some("pvr:1"));
+        }
+        s.set_last_channel("virtual:TRT 1").unwrap();
+        s.set_last_channel("TRT 1").unwrap(); // legacy saved identity
+    }
+
+    #[test]
+    fn corrupted_persisted_resume_identifier_is_rejected() {
+        let s = VirtualChannels::open(":memory:").unwrap();
+        s.set_last_channel("pvr:1").unwrap();
+        for invalid in ["pvr:0", "virtual:", "bad\nname", "virtual:TRT\u{202e}1"] {
+            s.db.execute(
+                "UPDATE settings SET value=?1 WHERE key='last_channel'",
+                [invalid],
+            )
+            .unwrap();
+            assert!(matches!(
+                s.last_channel(),
+                Err(ScheduleError::InvalidChannel)
+            ));
+        }
+        s.db.execute(
+            "UPDATE settings SET value='virtual:TRT 1' WHERE key='last_channel'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(s.last_channel().unwrap().as_deref(), Some("virtual:TRT 1"));
+    }
+
+    #[test]
+    fn rejects_out_of_range_timestamps_without_overwriting_channel() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("Movies", &[v("original.mp4", 1000)], 100)
+            .unwrap();
+        assert!(matches!(
+            s.set_channel("Movies", &[v("replacement.mp4", 1000)], i64::MAX as u64 + 1),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert_eq!(s.current("Movies", 500).unwrap().path, "original.mp4");
+        assert!(matches!(
+            s.current("Movies", i64::MAX as u64 + 1),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert_eq!(s.current("Movies", 500).unwrap().position_ms, 400);
+    }
+
+    #[test]
     fn position_advances_while_tuned_away() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
         s.set_channel("A", &[v("a.mp4", 1000)], 100).unwrap();
         assert_eq!(s.current("A", 350).unwrap().position_ms, 250);
         assert_eq!(s.current("A", 900).unwrap().position_ms, 800);
+    }
+    #[test]
+    fn future_cycle_start_does_not_schedule_an_early_transition() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("A", &[v("a.mp4", 1000)], 5000).unwrap();
+        let playback = s.current("A", 4000).unwrap();
+        assert_eq!(playback.position_ms, 0);
+        assert_eq!(playback.next_transition_ms, 6000);
     }
     #[test]
     fn persists_across_restart() {
@@ -385,13 +538,65 @@ mod tests {
         ));
     }
     #[test]
+    fn rejects_blank_media_path_before_persisting_or_playing() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        assert!(matches!(
+            s.set_channel("Movies", &[v("   ", 1000)], 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert!(s.list_channels().unwrap().is_empty());
+
+        s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
+        let corrupted = serde_json::to_string(&vec![v("   ", 1000)]).unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist=?1 WHERE name='Movies'",
+            [corrupted],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+    }
+
+    #[test]
+    fn rejects_nul_in_media_path_before_persisting_or_playing() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        assert!(matches!(
+            s.set_channel("Movies", &[v("movie\0.mp4", 1000)], 0),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+        assert!(s.list_channels().unwrap().is_empty());
+
+        s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
+        let corrupted = serde_json::to_string(&vec![v("movie\0.mp4", 1000)]).unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist=?1 WHERE name='Movies'",
+            [corrupted],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
+    }
+
+    #[test]
     fn rejects_invalid_channel_data() {
         let mut s = VirtualChannels::open(":memory:").unwrap();
         assert!(matches!(
             s.set_channel("", &[v("a", 100)], 0),
             Err(ScheduleError::InvalidChannel)
         ));
-        for invalid in ["   ", "bad\nname", &"x".repeat(93)] {
+        for invalid in [
+            "   ",
+            "bad\nname",
+            "pvr:1",
+            "virtual:News",
+            "TRT\u{202e}1",
+            "TV\u{200b}1",
+            &"x".repeat(93),
+        ] {
             assert!(matches!(
                 s.set_channel(invalid, &[v("a", 100)], 0),
                 Err(ScheduleError::InvalidChannel)
@@ -410,6 +615,55 @@ mod tests {
             Err(ScheduleError::InvalidPlaylist)
         ));
     }
+    #[test]
+    fn externally_corrupted_channel_names_are_not_exposed_to_picker() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("News", &[v("news.mp4", 1000)], 0).unwrap();
+        s.db.execute(
+            "UPDATE channels SET name='bad' || char(10) || 'name' WHERE name='News'",
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.list_channels(),
+            Err(ScheduleError::InvalidChannel)
+        ));
+    }
+
+    #[test]
+    fn direct_playback_rejects_corrupted_channel_names() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("News", &[v("news.mp4", 1000)], 0).unwrap();
+        s.db.execute(
+            "UPDATE channels SET name='bad' || char(10) || 'name' WHERE name='News'",
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("bad\nname", 500),
+            Err(ScheduleError::InvalidChannel)
+        ));
+        assert!(matches!(
+            s.current("virtual:News", 500),
+            Err(ScheduleError::InvalidChannel)
+        ));
+    }
+
+    #[test]
+    fn removal_rejects_invalid_names_without_changing_saved_selection() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("News", &[v("news.mp4", 1000)], 0).unwrap();
+        s.set_last_channel("virtual:News").unwrap();
+        for invalid in ["", "   ", "bad\nname", "pvr:1", "virtual:News"] {
+            assert!(matches!(
+                s.remove_channel(invalid),
+                Err(ScheduleError::InvalidChannel)
+            ));
+        }
+        assert_eq!(s.list_channels().unwrap(), vec!["News"]);
+        assert_eq!(s.last_channel().unwrap().as_deref(), Some("virtual:News"));
+    }
+
     #[test]
     fn channel_listing_and_removal_persist() {
         let dir = tempdir().unwrap();
@@ -430,6 +684,21 @@ mod tests {
         drop(s);
         let s = VirtualChannels::open(&db).unwrap();
         assert_eq!(s.list_channels().unwrap(), vec!["ZDF"]);
+    }
+
+    #[test]
+    fn corrupted_playlist_json_is_rejected_as_invalid_playlist() {
+        let mut s = VirtualChannels::open(":memory:").unwrap();
+        s.set_channel("Movies", &[v("valid.mp4", 1000)], 0).unwrap();
+        s.db.execute(
+            "UPDATE channels SET playlist='not-json' WHERE name='Movies'",
+            [],
+        )
+        .unwrap();
+        assert!(matches!(
+            s.current("Movies", 500),
+            Err(ScheduleError::InvalidPlaylist)
+        ));
     }
 
     #[test]
